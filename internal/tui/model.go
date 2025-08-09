@@ -10,6 +10,7 @@ type Model struct {
 	width int
 	height int
 	tasks []Task
+	cursor int
 }
 
 type Task struct {
@@ -29,6 +30,7 @@ const (
 func NewModel() Model {
 	return Model{
 		tasks: initializeMockTasks(),
+		cursor: 0,
 	}
 }
 
@@ -78,9 +80,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			// Count total tasks to determine bounds
+			totalTasks := m.countTasks()
+			if m.cursor < totalTasks-1 {
+				m.cursor++
+			}
 		}
 	}
 	return m, nil
+}
+
+func (m Model) countTasks() int {
+	count := 0
+	for _, task := range m.tasks {
+		count++
+		count += m.countSubTasks(task)
+	}
+	return count
+}
+
+func (m Model) countSubTasks(task Task) int {
+	count := 0
+	for _, subtask := range task.subtasks {
+		count++
+		count += m.countSubTasks(subtask)
+	}
+	return count
 }
 
 func (m Model) View() string {
@@ -97,17 +127,20 @@ func (m Model) View() string {
 	var rows []string
 	
 	// Helper function to recursively render tasks and subtasks
-	var renderTasks func(tasks []Task, indentLevel int)
-	renderTasks = func(tasks []Task, indentLevel int) {
+	var renderTasks func(tasks []Task, indentLevel int, index *int)
+	renderTasks = func(tasks []Task, indentLevel int, index *int) {
 		for _, task := range tasks {
-			rows = append(rows, m.renderRow(task, innerWidth, indentLevel))
+			isSelected := *index == m.cursor
+			rows = append(rows, m.renderRow(task, innerWidth, indentLevel, isSelected))
+			(*index)++
 			if len(task.subtasks) > 0 {
-				renderTasks(task.subtasks, indentLevel+1)
+				renderTasks(task.subtasks, indentLevel+1, index)
 			}
 		}
 	}
 	
-	renderTasks(m.tasks, 0)
+	index := 0
+	renderTasks(m.tasks, 0, &index)
 
 	// Body: title + rows
 	body := lipgloss.JoinVertical(lipgloss.Left, append([]string{title}, rows...)...)
@@ -128,7 +161,7 @@ func (m Model) View() string {
 	return container
 }
 
-func (m Model) renderRow(task Task, width int, indentLevel int) string {
+func (m Model) renderRow(task Task, width int, indentLevel int, isSelected bool) string {
 	// Styles: complete = greyed + strikethrough, active = green, todo = default
 	completeStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("8")). // terminal gray
@@ -181,9 +214,10 @@ func (m Model) renderRow(task Task, width int, indentLevel int) string {
 	bulletStyle := lipgloss.NewStyle().Width(2)
 	bulletRendered := bulletStyle.Render(bullet + " ")
 
-	// Text column width leaves space for bullet and indentation
+	// Text column width leaves space for cursor, bullet and indentation
 	// For indentation: 0 levels = 0 chars, 1+ levels = indentLevel * 2 chars
-	textColWidth := width - 2 - (indentLevel * 2)
+	// Cursor takes 2 chars, bullet takes 2 chars
+	textColWidth := width - 2 - 2 - (indentLevel * 2)
 	if textColWidth < 0 {
 		textColWidth = 0
 	}
@@ -192,8 +226,16 @@ func (m Model) renderRow(task Task, width int, indentLevel int) string {
 	text := getStyledTaskText(task)
 	textRendered := textStyle.Render(text)
 
-	// Combine indent, bullet, and text
-	return lipgloss.JoinHorizontal(lipgloss.Top, lipgloss.NewStyle().Render(indent), bulletRendered, textRendered)
+	// Combine cursor, indent, bullet, and text
+	cursorSymbol := " "
+	if isSelected {
+		cursorSymbol = ">"
+	}
+	
+	cursorStyle := lipgloss.NewStyle().Width(2)
+	cursorRendered := cursorStyle.Render(cursorSymbol + " ")
+	
+	return lipgloss.JoinHorizontal(lipgloss.Top, cursorRendered, lipgloss.NewStyle().Render(indent), bulletRendered, textRendered)
 }
 
 // Ensure Model implements tea.Model
