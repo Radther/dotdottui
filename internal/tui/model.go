@@ -1,7 +1,7 @@
 package tui
 
 import (
-	// "github.com/charmbracelet/bubbles/v2/list"
+	"github.com/charmbracelet/bubbles/v2/textinput"
 	tea "github.com/charmbracelet/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss/v2"
 )
@@ -11,6 +11,8 @@ type Model struct {
 	height int
 	tasks []Task
 	cursor int
+	editing bool
+	textInput textinput.Model
 }
 
 type Task struct {
@@ -28,15 +30,21 @@ const (
 )
 
 func NewModel() Model {
+	ti := textinput.New()
+	ti.Placeholder = "Task title"
+	ti.Focus()
+	
 	return Model{
 		tasks: initializeMockTasks(),
 		cursor: 0,
+		editing: false,
+		textInput: ti,
 	}
 }
 
 func initializeMockTasks() []Task {
 	tasks := []Task{
-		{title: "his task is done", status: Done},
+		{title: "This task is done", status: Done},
 		{
 			title: "This task is in progress",
 			status: Active,
@@ -77,18 +85,49 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
-			return m, tea.Quit
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
+		if m.editing {
+			// Handle text input updates when in editing mode
+			var cmd tea.Cmd
+			m.textInput, cmd = m.textInput.Update(msg)
+			
+			switch msg.String() {
+			case "enter":
+				// Save the edited text and exit editing mode
+				m.editTaskTitle(m.cursor, m.textInput.Value())
+				m.editing = false
+				m.textInput.Blur()
+				return m, cmd
+			case "esc":
+				// Exit editing mode without saving
+				m.editing = false
+				m.textInput.Blur()
+				return m, cmd
 			}
-		case "down", "j":
-			// Count total tasks to determine bounds
-			totalTasks := m.countTasks()
-			if m.cursor < totalTasks-1 {
-				m.cursor++
+			
+			return m, cmd
+		} else {
+			// Handle normal mode updates
+			switch msg.String() {
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			case "up", "k":
+				if m.cursor > 0 {
+					m.cursor--
+				}
+			case "down", "j":
+				// Count total tasks to determine bounds
+				totalTasks := m.countTasks()
+				if m.cursor < totalTasks-1 {
+					m.cursor++
+				}
+			case "enter":
+				// Toggle editing mode
+				m.editing = true
+				// Set the text input value to the current task title
+				task := m.getTaskAtPosition(m.cursor)
+				m.textInput.SetValue(task.title)
+				m.textInput.Focus()
+				return m, nil
 			}
 		}
 	}
@@ -113,9 +152,63 @@ func (m Model) countSubTasks(task Task) int {
 	return count
 }
 
+func (m Model) getTaskAtPosition(pos int) Task {
+	index := 0
+	var foundTask Task
+	found := false
+	
+	// Helper function to recursively traverse tasks
+	var traverse func(tasks []Task)
+	traverse = func(tasks []Task) {
+		for i := range tasks {
+			if found {
+				return
+			}
+			if index == pos {
+				foundTask = tasks[i]
+				found = true
+				return
+			}
+			index++
+			if len(tasks[i].subtasks) > 0 {
+				traverse(tasks[i].subtasks)
+			}
+		}
+	}
+	
+	traverse(m.tasks)
+	return foundTask
+}
+
+func (m *Model) editTaskTitle(pos int, newTitle string) {
+	index := 0
+	found := false
+	
+	// Helper function to recursively traverse and modify tasks
+	var traverse func(tasks *[]Task)
+	traverse = func(tasks *[]Task) {
+		for i := range *tasks {
+			if found {
+				return
+			}
+			if index == pos {
+				(*tasks)[i].title = newTitle
+				found = true
+				return
+			}
+			index++
+			if len((*tasks)[i].subtasks) > 0 {
+				traverse(&(*tasks)[i].subtasks)
+			}
+		}
+	}
+	
+	traverse(&m.tasks)
+}
+
 func (m Model) View() string {
 	title := lipgloss.NewStyle().
-		Render("My dotdots")
+		Render("Totally real task list")
 
 	// Compute inner content width to enable wrapping within the padded container.
 	// We have 2 chars padding on left and right (total = 4).
@@ -131,7 +224,7 @@ func (m Model) View() string {
 	renderTasks = func(tasks []Task, indentLevel int, index *int) {
 		for _, task := range tasks {
 			isSelected := *index == m.cursor
-			rows = append(rows, m.renderRow(task, innerWidth, indentLevel, isSelected))
+			rows = append(rows, m.renderRow(task, innerWidth, indentLevel, isSelected, m.editing))
 			(*index)++
 			if len(task.subtasks) > 0 {
 				renderTasks(task.subtasks, indentLevel+1, index)
@@ -161,7 +254,7 @@ func (m Model) View() string {
 	return container
 }
 
-func (m Model) renderRow(task Task, width int, indentLevel int, isSelected bool) string {
+func (m Model) renderRow(task Task, width int, indentLevel int, isSelected bool, isEditing bool) string {
 	// Styles: complete = greyed + strikethrough, active = green, todo = default
 	completeStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("8")). // terminal gray
@@ -171,23 +264,13 @@ func (m Model) renderRow(task Task, width int, indentLevel int, isSelected bool)
 	todoStyle := lipgloss.NewStyle()   // regular/default color
 
 	getStyledTaskText := func(t Task) string {
-		var statusStr string
 		switch t.status {
 		case Done:
-			statusStr = "@done"
+			return completeStyle.Render(t.title)
 		case Active:
-			statusStr = "@active"
-		case Todo:
-			statusStr = ""
-		}
-		fullText := t.title + " " + statusStr
-		switch t.status {
-		case Done:
-			return completeStyle.Render(fullText)
-		case Active:
-			return activeStyle.Render(fullText)
+			return activeStyle.Render(t.title)
 		default: // Todo
-			return todoStyle.Render(fullText)
+			return todoStyle.Render(t.title)
 		}
 	}
 
@@ -220,6 +303,15 @@ func (m Model) renderRow(task Task, width int, indentLevel int, isSelected bool)
 	textColWidth := width - 2 - 2 - (indentLevel * 2)
 	if textColWidth < 0 {
 		textColWidth = 0
+	}
+
+	// When editing the selected task, show the text input instead of the task title
+	if isEditing && isSelected {
+		textStyle := lipgloss.NewStyle().Width(textColWidth)
+		textRendered := textStyle.Render(m.textInput.View())
+		cursorStyle := lipgloss.NewStyle().Width(2)
+		cursorRendered := cursorStyle.Render("> ")
+		return lipgloss.JoinHorizontal(lipgloss.Top, cursorRendered, lipgloss.NewStyle().Render(indent), bulletRendered, textRendered)
 	}
 
 	textStyle := lipgloss.NewStyle().Width(textColWidth)
