@@ -174,26 +174,30 @@ func (m Model) getAllTaskIDs() []string {
 	return ids
 }
 
-// getPreviousTaskID returns the ID of the previous task in traversal order
-func (m Model) getPreviousTaskID() string {
+// getAdjacentTaskID returns the ID of the adjacent task in the given direction
+// direction: -1 for previous, +1 for next
+func (m Model) getAdjacentTaskID(direction int) string {
 	ids := m.getAllTaskIDs()
 	for i, id := range ids {
-		if id == m.cursorID && i > 0 {
-			return ids[i-1]
+		if id == m.cursorID {
+			newIndex := i + direction
+			if newIndex >= 0 && newIndex < len(ids) {
+				return ids[newIndex]
+			}
+			break
 		}
 	}
-	return m.cursorID // Return current if at beginning
+	return m.cursorID // Return current if at boundary
+}
+
+// getPreviousTaskID returns the ID of the previous task in traversal order
+func (m Model) getPreviousTaskID() string {
+	return m.getAdjacentTaskID(-1)
 }
 
 // getNextTaskID returns the ID of the next task in traversal order
 func (m Model) getNextTaskID() string {
-	ids := m.getAllTaskIDs()
-	for i, id := range ids {
-		if id == m.cursorID && i < len(ids)-1 {
-			return ids[i+1]
-		}
-	}
-	return m.cursorID // Return current if at end
+	return m.getAdjacentTaskID(1)
 }
 
 // findParentTask finds the parent task for a given task ID and returns the parent and index
@@ -229,6 +233,29 @@ func (m *Model) findParentTask(taskID string) (*Task, int) {
 	return search(&m.tasks)
 }
 
+// getTaskContainer returns the slice containing the task based on parent info
+func (m *Model) getTaskContainer(parent *Task) *[]Task {
+	if parent == nil {
+		return &m.tasks
+	}
+	return &parent.subtasks
+}
+
+// removeTaskFromSlice removes a task at the given index from a slice
+func removeTaskFromSlice(slice *[]Task, index int) Task {
+	task := (*slice)[index]
+	copy((*slice)[index:], (*slice)[index+1:])
+	*slice = (*slice)[:len(*slice)-1]
+	return task
+}
+
+// insertTaskInSlice inserts a task at the given position in a slice
+func insertTaskInSlice(slice *[]Task, index int, task Task) {
+	*slice = append(*slice, Task{})
+	copy((*slice)[index+1:], (*slice)[index:])
+	(*slice)[index] = task
+}
+
 func (m *Model) editTaskTitle(taskID string, newTitle string) {
 	found := false
 	
@@ -260,14 +287,7 @@ func (m *Model) moveTaskUp() {
 		return // Can't move up if not found or already first
 	}
 	
-	// Get the container (either top-level tasks or parent's subtasks)
-	var container *[]Task
-	if parent == nil {
-		container = &m.tasks
-	} else {
-		container = &parent.subtasks
-	}
-	
+	container := m.getTaskContainer(parent)
 	// Swap with the previous task
 	(*container)[index], (*container)[index-1] = (*container)[index-1], (*container)[index]
 }
@@ -279,14 +299,7 @@ func (m *Model) moveTaskDown() {
 		return // Can't move down if not found
 	}
 	
-	// Get the container (either top-level tasks or parent's subtasks)
-	var container *[]Task
-	if parent == nil {
-		container = &m.tasks
-	} else {
-		container = &parent.subtasks
-	}
-	
+	container := m.getTaskContainer(parent)
 	if index >= len(*container)-1 {
 		return // Can't move down if already last
 	}
@@ -303,26 +316,14 @@ func (m *Model) unindentTask() {
 	}
 	
 	// Remove task from current location (parent's subtasks)
-	task := parent.subtasks[index]
-	copy(parent.subtasks[index:], parent.subtasks[index+1:])
-	parent.subtasks = parent.subtasks[:len(parent.subtasks)-1]
+	task := removeTaskFromSlice(&parent.subtasks, index)
 	
 	// Find where to insert the task (after its former parent)
 	grandparent, parentIndex := m.findParentTask(parent.id)
-	
-	// Get the container where we'll insert the task
-	var container *[]Task
-	if grandparent == nil {
-		container = &m.tasks
-	} else {
-		container = &grandparent.subtasks
-	}
+	container := m.getTaskContainer(grandparent)
 	
 	// Insert task after its former parent
-	insertPos := parentIndex + 1
-	*container = append(*container, Task{})
-	copy((*container)[insertPos+1:], (*container)[insertPos:])
-	(*container)[insertPos] = task
+	insertTaskInSlice(container, parentIndex+1, task)
 }
 
 // indentTask moves a task into the previous sibling (increase indentation)
@@ -332,21 +333,12 @@ func (m *Model) indentTask() {
 		return // Can't indent if not found or first task
 	}
 	
-	// Get the container (either top-level tasks or parent's subtasks)
-	var container *[]Task
-	if parent == nil {
-		container = &m.tasks
-	} else {
-		container = &parent.subtasks
-	}
-	
+	container := m.getTaskContainer(parent)
 	// Get the previous sibling (which will become the parent)
 	prevSibling := &(*container)[index-1]
 	
 	// Remove task from current location
-	task := (*container)[index]
-	copy((*container)[index:], (*container)[index+1:])
-	*container = (*container)[:len(*container)-1]
+	task := removeTaskFromSlice(container, index)
 	
 	// Add task as subtask of previous sibling
 	prevSibling.subtasks = append(prevSibling.subtasks, task)
@@ -399,26 +391,21 @@ func (m Model) View() string {
 }
 
 func (m Model) renderRow(task Task, width int, indentLevel int, isSelected bool, isEditing bool) string {
-	// Styles: complete = greyed + strikethrough, active = green, todo = default
-	completeStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8")). // terminal gray
-		Strikethrough(true)
-	activeStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("2")) // terminal green
-	todoStyle := lipgloss.NewStyle()   // regular/default color
-
-	getStyledTaskText := func(t Task) string {
-		switch t.status {
-		case Done:
-			return completeStyle.Render(t.title)
-		case Active:
-			return activeStyle.Render(t.title)
-		default: // Todo
-			return todoStyle.Render(t.title)
-		}
+	// Task status styles
+	styleMap := map[TaskStatus]lipgloss.Style{
+		Done:   lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Strikethrough(true),
+		Active: lipgloss.NewStyle().Foreground(lipgloss.Color("2")),
+		Todo:   lipgloss.NewStyle(),
+	}
+	
+	// Task status bullets
+	bulletMap := map[TaskStatus]string{
+		Done:   "◉",
+		Active: "◎",
+		Todo:   "○",
 	}
 
-	// Create indentation string ((indentLevel-1)*2 spaces, then ╰ followed by a single space)
+	// Create indentation string
 	indent := ""
 	for i := 0; i < indentLevel-1; i++ {
 		indent += "  "
@@ -427,49 +414,28 @@ func (m Model) renderRow(task Task, width int, indentLevel int, isSelected bool,
 		indent += "╰ "
 	}
 
-	var bullet string
-	switch task.status {
-	case Done:
-		bullet = "◉"
-	case Active:
-		bullet = "◎"
-	case Todo:
-		bullet = "○"
-	}
-
-	// Add bullet style with width of 2 (bullet + space)
-	bulletStyle := lipgloss.NewStyle().Width(2)
-	bulletRendered := bulletStyle.Render(bullet + " ")
-
-	// Text column width leaves space for cursor, bullet and indentation
-	// For indentation: 0 levels = 0 chars, 1+ levels = indentLevel * 2 chars
-	// Cursor takes 2 chars, bullet takes 2 chars
+	// Create styled components
+	bulletRendered := lipgloss.NewStyle().Width(2).Render(bulletMap[task.status] + " ")
 	textColWidth := width - 2 - 2 - (indentLevel * 2)
 	if textColWidth < 0 {
 		textColWidth = 0
 	}
 
-	// When editing the selected task, show the text input instead of the task title
+	// Handle editing mode
 	if isEditing && isSelected {
-		textStyle := lipgloss.NewStyle().Width(textColWidth)
-		textRendered := textStyle.Render(m.textInput.View())
-		cursorStyle := lipgloss.NewStyle().Width(2)
-		cursorRendered := cursorStyle.Render("> ")
+		textRendered := lipgloss.NewStyle().Width(textColWidth).Render(m.textInput.View())
+		cursorRendered := lipgloss.NewStyle().Width(2).Render("> ")
 		return lipgloss.JoinHorizontal(lipgloss.Top, cursorRendered, lipgloss.NewStyle().Render(indent), bulletRendered, textRendered)
 	}
 
-	textStyle := lipgloss.NewStyle().Width(textColWidth)
-	text := getStyledTaskText(task)
-	textRendered := textStyle.Render(text)
-
-	// Combine cursor, indent, bullet, and text
+	// Normal mode
+	text := styleMap[task.status].Render(task.title)
+	textRendered := lipgloss.NewStyle().Width(textColWidth).Render(text)
 	cursorSymbol := " "
 	if isSelected {
 		cursorSymbol = ">"
 	}
-	
-	cursorStyle := lipgloss.NewStyle().Width(2)
-	cursorRendered := cursorStyle.Render(cursorSymbol + " ")
+	cursorRendered := lipgloss.NewStyle().Width(2).Render(cursorSymbol + " ")
 	
 	return lipgloss.JoinHorizontal(lipgloss.Top, cursorRendered, lipgloss.NewStyle().Render(indent), bulletRendered, textRendered)
 }
