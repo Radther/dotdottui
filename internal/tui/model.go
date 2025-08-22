@@ -196,28 +196,30 @@ func (m Model) getNextTaskID() string {
 	return m.cursorID // Return current if at end
 }
 
-// findTaskContainer finds the container (parent task slice) and index for a given task ID
-func (m Model) findTaskContainer(taskID string) (*[]Task, int) {
-	// Check top-level tasks first
+// findParentTask finds the parent task for a given task ID and returns the parent and index
+// For top-level tasks, returns nil parent and the index in the top-level tasks slice
+func (m *Model) findParentTask(taskID string) (*Task, int) {
+	// Check if it's a top-level task first
 	for i, task := range m.tasks {
 		if task.id == taskID {
-			return &m.tasks, i
+			return nil, i // No parent for top-level tasks
 		}
 	}
 	
-	// Helper function to recursively search in subtasks
-	var search func(tasks *[]Task) (*[]Task, int)
-	search = func(tasks *[]Task) (*[]Task, int) {
+	// Helper function to recursively search for parent
+	var search func(tasks *[]Task) (*Task, int)
+	search = func(tasks *[]Task) (*Task, int) {
 		for i := range *tasks {
+			// Check if any subtask matches the target ID
 			for j, subtask := range (*tasks)[i].subtasks {
 				if subtask.id == taskID {
-					return &(*tasks)[i].subtasks, j
+					return &(*tasks)[i], j
 				}
 			}
 			// Recursively search deeper
 			if len((*tasks)[i].subtasks) > 0 {
-				if container, index := search(&(*tasks)[i].subtasks); container != nil {
-					return container, index
+				if parent, index := search(&(*tasks)[i].subtasks); parent != nil {
+					return parent, index
 				}
 			}
 		}
@@ -253,9 +255,17 @@ func (m *Model) editTaskTitle(taskID string, newTitle string) {
 
 // moveTaskUp moves a task up within its parent container
 func (m *Model) moveTaskUp() {
-	container, index := m.findTaskContainer(m.cursorID)
-	if container == nil || index <= 0 {
+	parent, index := m.findParentTask(m.cursorID)
+	if index <= 0 {
 		return // Can't move up if not found or already first
+	}
+	
+	// Get the container (either top-level tasks or parent's subtasks)
+	var container *[]Task
+	if parent == nil {
+		container = &m.tasks
+	} else {
+		container = &parent.subtasks
 	}
 	
 	// Swap with the previous task
@@ -264,9 +274,21 @@ func (m *Model) moveTaskUp() {
 
 // moveTaskDown moves a task down within its parent container
 func (m *Model) moveTaskDown() {
-	container, index := m.findTaskContainer(m.cursorID)
-	if container == nil || index >= len(*container)-1 {
-		return // Can't move down if not found or already last
+	parent, index := m.findParentTask(m.cursorID)
+	if index < 0 {
+		return // Can't move down if not found
+	}
+	
+	// Get the container (either top-level tasks or parent's subtasks)
+	var container *[]Task
+	if parent == nil {
+		container = &m.tasks
+	} else {
+		container = &parent.subtasks
+	}
+	
+	if index >= len(*container)-1 {
+		return // Can't move down if already last
 	}
 	
 	// Swap with the next task
@@ -275,61 +297,47 @@ func (m *Model) moveTaskDown() {
 
 // unindentTask moves a task out of its parent (decrease indentation)
 func (m *Model) unindentTask() {
-	container, index := m.findTaskContainer(m.cursorID)
-	if container == nil {
-		return
+	parent, index := m.findParentTask(m.cursorID)
+	if parent == nil {
+		return // Can't unindent top-level tasks
 	}
 	
-	// Find parent container (only works if current task is not top-level)
-	var parentContainer *[]Task
-	var parentIndex int
-	found := false
+	// Remove task from current location (parent's subtasks)
+	task := parent.subtasks[index]
+	copy(parent.subtasks[index:], parent.subtasks[index+1:])
+	parent.subtasks = parent.subtasks[:len(parent.subtasks)-1]
 	
-	// Search for the parent of the current container
-	var search func(tasks *[]Task, targetContainer *[]Task) bool
-	search = func(tasks *[]Task, targetContainer *[]Task) bool {
-		for i := range *tasks {
-			if &(*tasks)[i].subtasks == targetContainer {
-				parentContainer = tasks
-				parentIndex = i
-				return true
-			}
-			if len((*tasks)[i].subtasks) > 0 {
-				if search(&(*tasks)[i].subtasks, targetContainer) {
-					return true
-				}
-			}
-		}
-		return false
+	// Find where to insert the task (after its former parent)
+	grandparent, parentIndex := m.findParentTask(parent.id)
+	
+	// Get the container where we'll insert the task
+	var container *[]Task
+	if grandparent == nil {
+		container = &m.tasks
+	} else {
+		container = &grandparent.subtasks
 	}
 	
-	// Check if this is a top-level task (can't unindent)
-	if container == &m.tasks {
-		return
-	}
-	
-	found = search(&m.tasks, container)
-	if !found {
-		return
-	}
-	
-	// Remove task from current location
-	task := (*container)[index]
-	copy((*container)[index:], (*container)[index+1:])
-	*container = (*container)[:len(*container)-1]
-	
-	// Insert task after its parent
+	// Insert task after its former parent
 	insertPos := parentIndex + 1
-	*parentContainer = append(*parentContainer, Task{})
-	copy((*parentContainer)[insertPos+1:], (*parentContainer)[insertPos:])
-	(*parentContainer)[insertPos] = task
+	*container = append(*container, Task{})
+	copy((*container)[insertPos+1:], (*container)[insertPos:])
+	(*container)[insertPos] = task
 }
 
 // indentTask moves a task into the previous sibling (increase indentation)
 func (m *Model) indentTask() {
-	container, index := m.findTaskContainer(m.cursorID)
-	if container == nil || index <= 0 {
+	parent, index := m.findParentTask(m.cursorID)
+	if index <= 0 {
 		return // Can't indent if not found or first task
+	}
+	
+	// Get the container (either top-level tasks or parent's subtasks)
+	var container *[]Task
+	if parent == nil {
+		container = &m.tasks
+	} else {
+		container = &parent.subtasks
 	}
 	
 	// Get the previous sibling (which will become the parent)
