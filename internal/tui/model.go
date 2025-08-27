@@ -421,13 +421,17 @@ func (m Model) renderBullet(status TaskStatus, isEditing bool, isSelected bool) 
 
 func (m Model) renderCursor(isSelected bool, isEditing bool) string {
 	cursorSymbol := " "
-	if isSelected {
-		cursorSymbol = ">"
-	}
 	style := lipgloss.NewStyle().Width(CursorWidth)
+	
+	if isSelected {
+		cursorSymbol = "▐"
+		style = style.Foreground(lipgloss.Color("1")) // Red color
+	}
+	
 	if isEditing && !isSelected {
 		style = style.Foreground(lipgloss.Color("8"))
 	}
+	
 	return style.Render(cursorSymbol + " ")
 }
 
@@ -453,6 +457,8 @@ func (m Model) renderText(task Task, width int, isSelected bool, isEditing bool)
 	style := styleMap[task.status]
 	if isEditing && !isSelected {
 		style = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	} else if isSelected && !isEditing {
+		style = style.Underline(true)
 	}
 	
 	text := style.Render(task.title)
