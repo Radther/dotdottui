@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+	
 	"github.com/charmbracelet/bubbles/v2/textinput"
 	tea "github.com/charmbracelet/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss/v2"
@@ -29,6 +31,16 @@ const (
 	Todo TaskStatus = iota
 	Active
 	Done
+)
+
+const (
+	// UI spacing constants
+	CursorWidth     = 2
+	BulletWidth     = 2
+	IndentWidth     = 2
+	PaddingLeft     = 2
+	PaddingRight    = 2
+	TotalPadding    = PaddingLeft + PaddingRight
 )
 
 // NewTask creates a new task with auto-generated UUID
@@ -69,84 +81,90 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 	case tea.KeyMsg:
 		if m.editing {
-			// Handle text input updates when in editing mode
-			var cmd tea.Cmd
-			m.textInput, cmd = m.textInput.Update(msg)
-			
-			switch msg.String() {
-			case "enter":
-				// Save the edited text and exit editing mode
-				m.editTaskTitle(m.cursorID, m.textInput.Value())
-				m.editing = false
-				m.textInput.Blur()
-				return m, cmd
-			case "esc":
-				// Exit editing mode without saving
-				m.editing = false
-				m.textInput.Blur()
-				return m, cmd
-			}
-			
-			return m, cmd
+			return m.handleEditingMode(msg)
 		} else {
-			// Handle normal mode updates
-			switch msg.String() {
-			case "q", "ctrl+c":
-				return m, tea.Quit
-			case "up", "k":
-				m.cursorID = m.getPreviousTaskID()
-			case "down", "j":
-				m.cursorID = m.getNextTaskID()
-			case "ctrl+up":
-				// Move task up within its parent
-				m.moveTaskUp()
-			case "ctrl+down":
-				// Move task down within its parent
-				m.moveTaskDown()
-			case "ctrl+left":
-				// Unindent task (move out of parent)
-				m.unindentTask()
-			case "ctrl+right":
-				// Indent task (move into previous sibling)
-				m.indentTask()
-			case "enter":
-				// Toggle editing mode
-				m.editing = true
-				// Set the text input value to the current task title
-				task := m.getCurrentTask()
-				if task != nil {
-					m.textInput.SetValue(task.title)
-				}
-				m.textInput.Focus()
-				return m, nil
-			}
+			return m.handleNormalMode(msg)
 		}
 	}
 	return m, nil
 }
 
+func (m Model) handleEditingMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	m.textInput, cmd = m.textInput.Update(msg)
+	
+	switch msg.String() {
+	case "enter":
+		m.editTaskTitle(m.cursorID, m.textInput.Value())
+		m.editing = false
+		m.textInput.Blur()
+		return m, cmd
+	case "esc":
+		m.editing = false
+		m.textInput.Blur()
+		return m, cmd
+	}
+	
+	return m, cmd
+}
+
+func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "up", "k":
+		m.cursorID = m.getPreviousTaskID()
+	case "down", "j":
+		m.cursorID = m.getNextTaskID()
+	case "ctrl+up":
+		m.moveTaskUp()
+	case "ctrl+down":
+		m.moveTaskDown()
+	case "ctrl+left":
+		m.unindentTask()
+	case "ctrl+right":
+		m.indentTask()
+	case "enter":
+		m.editing = true
+		task := m.getCurrentTask()
+		if task != nil {
+			m.textInput.SetValue(task.title)
+		}
+		m.textInput.Focus()
+		return m, nil
+	}
+	return m, nil
+}
+
+// traverseTasks executes a function for each task in the tree
+func (m Model) traverseTasks(fn func(*Task) bool) {
+	var traverse func(tasks []Task) bool
+	traverse = func(tasks []Task) bool {
+		for i := range tasks {
+			if fn(&tasks[i]) {
+				return true
+			}
+			if len(tasks[i].subtasks) > 0 {
+				if traverse(tasks[i].subtasks) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	traverse(m.tasks)
+}
+
 // findTaskByID finds a task by its UUID and returns it
 func (m Model) findTaskByID(id string) *Task {
 	var found *Task
-	
-	// Helper function to recursively traverse tasks
-	var traverse func(tasks []Task)
-	traverse = func(tasks []Task) {
-		for i := range tasks {
-			if found != nil {
-				return
-			}
-			if tasks[i].id == id {
-				found = &tasks[i]
-				return
-			}
-			if len(tasks[i].subtasks) > 0 {
-				traverse(tasks[i].subtasks)
-			}
+	m.traverseTasks(func(task *Task) bool {
+		if task.id == id {
+			found = task
+			return true
 		}
-	}
-	
-	traverse(m.tasks)
+		return false
+	})
 	return found
 }
 
@@ -158,19 +176,10 @@ func (m Model) getCurrentTask() *Task {
 // getAllTaskIDs returns all task IDs in traversal order
 func (m Model) getAllTaskIDs() []string {
 	var ids []string
-	
-	// Helper function to recursively traverse tasks
-	var traverse func(tasks []Task)
-	traverse = func(tasks []Task) {
-		for _, task := range tasks {
-			ids = append(ids, task.id)
-			if len(task.subtasks) > 0 {
-				traverse(task.subtasks)
-			}
-		}
-	}
-	
-	traverse(m.tasks)
+	m.traverseTasks(func(task *Task) bool {
+		ids = append(ids, task.id)
+		return false
+	})
 	return ids
 }
 
@@ -257,27 +266,13 @@ func insertTaskInSlice(slice *[]Task, index int, task Task) {
 }
 
 func (m *Model) editTaskTitle(taskID string, newTitle string) {
-	found := false
-	
-	// Helper function to recursively traverse and modify tasks
-	var traverse func(tasks *[]Task)
-	traverse = func(tasks *[]Task) {
-		for i := range *tasks {
-			if found {
-				return
-			}
-			if (*tasks)[i].id == taskID {
-				(*tasks)[i].title = newTitle
-				found = true
-				return
-			}
-			if len((*tasks)[i].subtasks) > 0 {
-				traverse(&(*tasks)[i].subtasks)
-			}
+	m.traverseTasks(func(task *Task) bool {
+		if task.id == taskID {
+			task.title = newTitle
+			return true
 		}
-	}
-	
-	traverse(&m.tasks)
+		return false
+	})
 }
 
 // moveTaskUp moves a task up within its parent container
@@ -348,9 +343,8 @@ func (m Model) View() string {
 	title := lipgloss.NewStyle().
 		Render("Totally real task list")
 
-	// Compute inner content width to enable wrapping within the padded container.
-	// We have 2 chars padding on left and right (total = 4).
-	innerWidth := m.width - 4
+	// Compute inner content width to enable wrapping within the padded container
+	innerWidth := m.width - TotalPadding*2
 	if innerWidth < 0 {
 		innerWidth = 0
 	}
@@ -380,64 +374,79 @@ func (m Model) View() string {
 		MaxWidth(innerWidth).
 		Render(body)
 
-	// Padded container with fixed outer width.
+	// Padded container with fixed outer width
 	container := lipgloss.NewStyle().
-		Padding(1, 2).
-		Width(innerWidth + 4).
-		MaxWidth(innerWidth + 4).
+		Padding(1, PaddingLeft).
+		Width(innerWidth + TotalPadding*2).
+		MaxWidth(innerWidth + TotalPadding*2).
 		Render(wrapped)
 
 	return container
 }
 
 func (m Model) renderRow(task Task, width int, indentLevel int, isSelected bool, isEditing bool) string {
-	// Task status styles
+	indent := m.renderIndentation(indentLevel)
+	bulletRendered := m.renderBullet(task.status)
+	cursorRendered := m.renderCursor(isSelected, isEditing)
+	textColWidth := m.calculateTextWidth(width, indentLevel)
+	textRendered := m.renderText(task, textColWidth, isSelected, isEditing)
+	
+	return lipgloss.JoinHorizontal(lipgloss.Top, cursorRendered, lipgloss.NewStyle().Render(indent), bulletRendered, textRendered)
+}
+
+func (m Model) renderIndentation(indentLevel int) string {
+	indent := ""
+	for i := 0; i < indentLevel-1; i++ {
+		indent += strings.Repeat(" ", IndentWidth)
+	}
+	if indentLevel > 0 {
+		indent += "╰ "
+	}
+	return indent
+}
+
+func (m Model) renderBullet(status TaskStatus) string {
+	bulletMap := map[TaskStatus]string{
+		Done:   "◉",
+		Active: "◎",
+		Todo:   "○",
+	}
+	return lipgloss.NewStyle().Width(BulletWidth).Render(bulletMap[status] + " ")
+}
+
+func (m Model) renderCursor(isSelected bool, isEditing bool) string {
+	cursorSymbol := " "
+	if isSelected {
+		if isEditing {
+			cursorSymbol = ">"
+		} else {
+			cursorSymbol = ">"
+		}
+	}
+	return lipgloss.NewStyle().Width(CursorWidth).Render(cursorSymbol + " ")
+}
+
+func (m Model) calculateTextWidth(width int, indentLevel int) int {
+	textColWidth := width - CursorWidth - BulletWidth - (indentLevel * IndentWidth)
+	if textColWidth < 0 {
+		textColWidth = 0
+	}
+	return textColWidth
+}
+
+func (m Model) renderText(task Task, width int, isSelected bool, isEditing bool) string {
+	if isEditing && isSelected {
+		return lipgloss.NewStyle().Width(width).Render(m.textInput.View())
+	}
+	
 	styleMap := map[TaskStatus]lipgloss.Style{
 		Done:   lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Strikethrough(true),
 		Active: lipgloss.NewStyle().Foreground(lipgloss.Color("2")),
 		Todo:   lipgloss.NewStyle(),
 	}
 	
-	// Task status bullets
-	bulletMap := map[TaskStatus]string{
-		Done:   "◉",
-		Active: "◎",
-		Todo:   "○",
-	}
-
-	// Create indentation string
-	indent := ""
-	for i := 0; i < indentLevel-1; i++ {
-		indent += "  "
-	}
-	if indentLevel > 0 {
-		indent += "╰ "
-	}
-
-	// Create styled components
-	bulletRendered := lipgloss.NewStyle().Width(2).Render(bulletMap[task.status] + " ")
-	textColWidth := width - 2 - 2 - (indentLevel * 2)
-	if textColWidth < 0 {
-		textColWidth = 0
-	}
-
-	// Handle editing mode
-	if isEditing && isSelected {
-		textRendered := lipgloss.NewStyle().Width(textColWidth).Render(m.textInput.View())
-		cursorRendered := lipgloss.NewStyle().Width(2).Render("> ")
-		return lipgloss.JoinHorizontal(lipgloss.Top, cursorRendered, lipgloss.NewStyle().Render(indent), bulletRendered, textRendered)
-	}
-
-	// Normal mode
 	text := styleMap[task.status].Render(task.title)
-	textRendered := lipgloss.NewStyle().Width(textColWidth).Render(text)
-	cursorSymbol := " "
-	if isSelected {
-		cursorSymbol = ">"
-	}
-	cursorRendered := lipgloss.NewStyle().Width(2).Render(cursorSymbol + " ")
-	
-	return lipgloss.JoinHorizontal(lipgloss.Top, cursorRendered, lipgloss.NewStyle().Render(indent), bulletRendered, textRendered)
+	return lipgloss.NewStyle().Width(width).Render(text)
 }
 
 // Ensure Model implements tea.Model
