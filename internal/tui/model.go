@@ -117,13 +117,17 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursorID = m.getPreviousTaskID()
 	case "down", "j":
 		m.cursorID = m.getNextTaskID()
-	case "ctrl+up":
+	case "left", "h":
+		m.changeTaskStatusBackward()
+	case "right", "l":
+		m.changeTaskStatusForward()
+	case "ctrl+up", "ctrl+k":
 		m.moveTaskUp()
-	case "ctrl+down":
+	case "ctrl+down", "ctrl+j":
 		m.moveTaskDown()
-	case "ctrl+left":
+	case "ctrl+left", "ctrl+h":
 		m.unindentTask()
-	case "ctrl+right":
+	case "ctrl+right", "ctrl+l":
 		m.indentTask()
 	case "enter":
 		m.editing = true
@@ -270,6 +274,42 @@ func (m *Model) editTaskTitle(taskID string, newTitle string) {
 	m.traverseTasks(func(task *Task) bool {
 		if task.id == taskID {
 			task.title = newTitle
+			return true
+		}
+		return false
+	})
+}
+
+// changeTaskStatusForward advances task status: Todo -> Active -> Done
+func (m *Model) changeTaskStatusForward() {
+	m.traverseTasks(func(task *Task) bool {
+		if task.id == m.cursorID {
+			switch task.status {
+			case Todo:
+				task.status = Active
+			case Active:
+				task.status = Done
+			case Done:
+				// Already at max status, no change
+			}
+			return true
+		}
+		return false
+	})
+}
+
+// changeTaskStatusBackward reverses task status: Done -> Active -> Todo
+func (m *Model) changeTaskStatusBackward() {
+	m.traverseTasks(func(task *Task) bool {
+		if task.id == m.cursorID {
+			switch task.status {
+			case Done:
+				task.status = Active
+			case Active:
+				task.status = Todo
+			case Todo:
+				// Already at min status, no change
+			}
 			return true
 		}
 		return false
