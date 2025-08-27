@@ -56,6 +56,7 @@ func NewTask(title string, status TaskStatus, subtasks ...Task) Task {
 func NewModel() Model {
 	ti := textinput.New()
 	ti.Placeholder = "Task title"
+	ti.Prompt = ""
 	ti.Focus()
 	
 	tasks := InitializeMockTasks()
@@ -386,7 +387,7 @@ func (m Model) View() string {
 
 func (m Model) renderRow(task Task, width int, indentLevel int, isSelected bool, isEditing bool) string {
 	indent := m.renderIndentation(indentLevel)
-	bulletRendered := m.renderBullet(task.status)
+	bulletRendered := m.renderBullet(task.status, isEditing, isSelected)
 	cursorRendered := m.renderCursor(isSelected, isEditing)
 	textColWidth := m.calculateTextWidth(width, indentLevel)
 	textRendered := m.renderText(task, textColWidth, isSelected, isEditing)
@@ -405,25 +406,29 @@ func (m Model) renderIndentation(indentLevel int) string {
 	return indent
 }
 
-func (m Model) renderBullet(status TaskStatus) string {
+func (m Model) renderBullet(status TaskStatus, isEditing bool, isSelected bool) string {
 	bulletMap := map[TaskStatus]string{
 		Done:   "◉",
 		Active: "◎",
 		Todo:   "○",
 	}
-	return lipgloss.NewStyle().Width(BulletWidth).Render(bulletMap[status] + " ")
+	style := lipgloss.NewStyle().Width(BulletWidth)
+	if isEditing && !isSelected {
+		style = style.Foreground(lipgloss.Color("8"))
+	}
+	return style.Render(bulletMap[status] + " ")
 }
 
 func (m Model) renderCursor(isSelected bool, isEditing bool) string {
 	cursorSymbol := " "
 	if isSelected {
-		if isEditing {
-			cursorSymbol = ">"
-		} else {
-			cursorSymbol = ">"
-		}
+		cursorSymbol = ">"
 	}
-	return lipgloss.NewStyle().Width(CursorWidth).Render(cursorSymbol + " ")
+	style := lipgloss.NewStyle().Width(CursorWidth)
+	if isEditing && !isSelected {
+		style = style.Foreground(lipgloss.Color("8"))
+	}
+	return style.Render(cursorSymbol + " ")
 }
 
 func (m Model) calculateTextWidth(width int, indentLevel int) int {
@@ -445,7 +450,12 @@ func (m Model) renderText(task Task, width int, isSelected bool, isEditing bool)
 		Todo:   lipgloss.NewStyle(),
 	}
 	
-	text := styleMap[task.status].Render(task.title)
+	style := styleMap[task.status]
+	if isEditing && !isSelected {
+		style = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	}
+	
+	text := style.Render(task.title)
 	return lipgloss.NewStyle().Width(width).Render(text)
 }
 
