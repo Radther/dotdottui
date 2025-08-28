@@ -10,12 +10,13 @@ import (
 )
 
 type Model struct {
-	width     int
-	height    int
-	tasks     []Task
-	cursorID  string
-	editing   bool
-	textInput textinput.Model
+	width        int
+	height       int
+	tasks        []Task
+	cursorID     string
+	previousID   string
+	editing      bool
+	textInput    textinput.Model
 }
 
 type Task struct {
@@ -66,10 +67,11 @@ func NewModel() Model {
 	}
 	
 	return Model{
-		tasks:     tasks,
-		cursorID:  cursorID,
-		editing:   false,
-		textInput: ti,
+		tasks:      tasks,
+		cursorID:   cursorID,
+		previousID: "",
+		editing:    false,
+		textInput:  ti,
 	}
 }
 
@@ -101,6 +103,11 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.textInput.Blur()
 		return m, cmd
 	case "esc":
+		// If the task title is empty, delete the task
+		currentTask := m.getCurrentTask()
+		if currentTask != nil && currentTask.title == "" {
+			m.deleteCurrentTask()
+		}
 		m.editing = false
 		m.textInput.Blur()
 		return m, cmd
@@ -129,6 +136,26 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.unindentTask()
 	case "ctrl+right", "ctrl+l":
 		m.indentTask()
+	case "n":
+		m.previousID = m.cursorID
+		newTaskID := m.createNewTaskBelow()
+		if newTaskID != "" {
+			m.cursorID = newTaskID
+			m.editing = true
+			m.textInput.SetValue("")
+			m.textInput.Focus()
+		}
+		return m, nil
+	case "N":
+		m.previousID = m.cursorID
+		newTaskID := m.createNewSubtask()
+		if newTaskID != "" {
+			m.cursorID = newTaskID
+			m.editing = true
+			m.textInput.SetValue("")
+			m.textInput.Focus()
+		}
+		return m, nil
 	case "enter":
 		m.editing = true
 		task := m.getCurrentTask()
@@ -314,6 +341,72 @@ func (m *Model) changeTaskStatusBackward() {
 		}
 		return false
 	})
+}
+
+// createNewTaskBelow creates a new task below the currently selected task
+func (m *Model) createNewTaskBelow() string {
+	parent, index := m.findParentTask(m.cursorID)
+	if index < 0 {
+		return "" // Task not found
+	}
+	
+	container := m.getTaskContainer(parent)
+	newTask := NewTask("", Todo)
+	
+	// Insert after the current task
+	insertTaskInSlice(container, index+1, newTask)
+	
+	return newTask.id
+}
+
+// createNewSubtask creates a new subtask at the end of the currently selected task's subtasks
+func (m *Model) createNewSubtask() string {
+	currentTask := m.getCurrentTask()
+	if currentTask == nil {
+		return ""
+	}
+	
+	newTask := NewTask("", Todo)
+	
+	// Add to the end of the current task's subtasks
+	currentTask.subtasks = append(currentTask.subtasks, newTask)
+	
+	return newTask.id
+}
+
+// deleteCurrentTask removes the currently selected task
+func (m *Model) deleteCurrentTask() {
+	parent, index := m.findParentTask(m.cursorID)
+	if index < 0 {
+		return // Task not found
+	}
+	
+	container := m.getTaskContainer(parent)
+	
+	// Remove the task from its container
+	removeTaskFromSlice(container, index)
+	
+	// Update cursor to a valid task
+	m.updateCursorAfterDeletion()
+}
+
+// updateCursorAfterDeletion moves cursor to a valid task after deletion
+func (m *Model) updateCursorAfterDeletion() {
+	// First try to go back to the previously selected task
+	if m.previousID != "" && m.findTaskByID(m.previousID) != nil {
+		m.cursorID = m.previousID
+		m.previousID = ""
+		return
+	}
+	
+	// Otherwise, select the first available task
+	allIDs := m.getAllTaskIDs()
+	if len(allIDs) > 0 {
+		m.cursorID = allIDs[0]
+	} else {
+		m.cursorID = ""
+	}
+	m.previousID = ""
 }
 
 // moveTaskUp moves a task up within its parent container
