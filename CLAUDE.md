@@ -17,32 +17,54 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-This is a terminal-based task management application built with Charm's BubbleTea framework. The application uses a hierarchical task structure with vim-style keybindings.
+This is a terminal-based task management application built with Charm's BubbleTea framework. The application uses a hierarchical task structure with vim-style keybindings and supports persistent storage with global/local task lists.
 
-### Core Components
+### Project Structure
 
 **Main Application (`cmd/dotdot/main.go`)**
-- Entry point that initializes the TUI with `tea.WithAltScreen()`
-- Uses the BubbleTea V2 program model
+- Entry point that handles CLI argument parsing and routing
+- Routes commands to appropriate handlers: runTUI, listTasks, deleteTasks
+- Uses the BubbleTea V2 program model for the TUI interface
 
-**TUI Model (`internal/tui/model.go`)**
-- Implements the core BubbleTea Model interface with `Update()`, `View()`, and `Init()`
-- Manages application state including task hierarchy, cursor position, and editing mode
-- Key data structures:
-  - `Model`: Main application state with width, height, tasks, cursorID, previousID, editing flag, and textInput
-  - `Task`: Hierarchical structure with id (UUID), title, status (Todo/Active/Done), and subtasks slice
-  - UI constants: CursorWidth, BulletWidth, IndentWidth, PaddingLeft/Right, TotalPadding
+**TUI Package (`internal/tui/`)**
+- `model.go` - Core BubbleTea Model interface with `Update()`, `View()`, and `Init()`
+- `operations.go` - Task CRUD operations, tree traversal, and task manipulation functions
+- `styles.go` - All styling constants, color definitions, and pre-configured lipgloss styles
+- `mock_tasks.go` - Sample data for testing and development
 
-**State Management**
-- Tasks are stored as a hierarchical slice structure allowing unlimited nesting
-- Uses UUID-based task identification for cursor tracking and operations
-- Maintains previousID for smart cursor positioning after deletions
-- Generic tree traversal utility (`traverseTasks`) used across multiple operations
+**Storage Package (`internal/storage/`)**
+- `json.go` - File I/O operations, JSON serialization, and task list management
+- Handles .dot file format with metadata (version, timestamps, task data)
+- Supports backup creation and legacy format migration
 
-**Rendering System**
-- Modular rendering with separate functions: `renderRow`, `renderIndentation`, `renderBullet`, `renderCursor`, `renderText`
-- Handles edit mode styling (dimming non-selected tasks, removing text input prompt)
-- Uses lipgloss V2 for styling with color codes (1=red cursor, 2=green active, 8=gray dimmed)
+**CLI Package (`internal/cli/`)**
+- `args.go` - Command-line argument parsing and validation
+- Supports global, local, and explicit file path operations
+
+### Core Data Structures
+
+**Model**: Main application state
+- Task hierarchy, cursor position, editing state
+- File path and auto-save configuration  
+- Error handling state (lastError, showError)
+
+**Task**: Hierarchical structure with UUID-based identification
+- ID (string), title (string), status (TaskStatus enum), subtasks ([]Task)
+- Status progression: Todo → Active → Done
+
+**TaskStatus**: Enum with three states (Todo, Active, Done)
+
+### State Management
+- Tasks stored as hierarchical slice structure allowing unlimited nesting
+- UUID-based task identification for cursor tracking and operations
+- previousID maintained for smart cursor positioning after deletions
+- Generic tree traversal utilities (`traverseTasks`, `modifyTaskByID`) for consistent operations
+
+### Styling System
+- Semantic color constants by use rather than color value:
+  - `CursorColor`, `ActiveTaskColor`, `DimmedColor`, `ErrorTextColor`, etc.
+- Pre-configured lipgloss styles for consistent UI elements
+- Modular rendering functions: `renderRow`, `renderIndentation`, `renderBullet`, `renderCursor`, `renderText`
 
 ### Key Bindings Architecture
 The application separates input handling into two modes:
@@ -61,11 +83,26 @@ The application separates input handling into two modes:
 - ESC on empty tasks deletes them and returns cursor to previous selection
 
 ### Task Operations
-- **Creation**: New tasks created with empty title, Todo status, auto-generated UUID
-- **Movement**: Tasks can move up/down within their container, indent/unindent between hierarchy levels
-- **Status**: Three-state progression (Todo → Active → Done) with left/right arrow control
+- **Creation**: Unified `createTask(asSubtask bool)` handles both sibling and subtask creation
+- **Movement**: Tasks can move up/down within their container, indent/unindent between hierarchy levels  
+- **Status**: Unified `changeTaskStatus(direction int)` for three-state progression (Todo → Active → Done)
 - **Deletion**: Empty tasks are auto-deleted on ESC during creation
 - **Editing**: In-place text editing with visual feedback (underlining, dimming)
+
+### File Storage System
+- **Formats**: JSON-based .dot files with metadata (version, created/updated timestamps)
+- **Global task lists**: Stored in `~/.config/dotdot/tasks/` 
+- **Local task lists**: Stored in current working directory
+- **Auto-save**: Automatic saving after every task operation when file path is configured
+- **Backup system**: Creates .bak files before overwriting existing files
+- **Legacy support**: Can load older format files and upgrade them on save
+
+### Command Line Interface
+- **Syntax**: `dotdot [flags] [command] [name]`
+- **Commands**: `open` (default), `list`, `delete`
+- **Global lists**: `dotdot open work` → `~/.config/dotdot/tasks/work.dot`
+- **Local lists**: `dotdot --local open mytasks` → `./mytasks.dot`
+- **Explicit paths**: `dotdot --file /path/to/tasks.dot open`
 
 ### Testing Structure
 - Comprehensive test suite in `model_test.go` covering task manipulation, finding, boundary conditions, and cursor positioning

@@ -220,8 +220,18 @@ func FileExists(filePath string) bool {
 	return !os.IsNotExist(err)
 }
 
+// FileInfo represents metadata about a task file
+type FileInfo struct {
+	Path      string    `json:"path"`
+	Size      int64     `json:"size"`
+	Modified  time.Time `json:"modified"`
+	Version   string    `json:"version,omitempty"`
+	Created   time.Time `json:"created,omitempty"`
+	TaskCount int       `json:"task_count,omitempty"`
+}
+
 // GetFileInfo returns basic information about a task file
-func GetFileInfo(filePath string) (map[string]interface{}, error) {
+func GetFileInfo(filePath string) (*FileInfo, error) {
 	if !FileExists(filePath) {
 		return nil, fmt.Errorf("file %s does not exist", filePath)
 	}
@@ -231,10 +241,10 @@ func GetFileInfo(filePath string) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
 
-	info := map[string]interface{}{
-		"path":     filePath,
-		"size":     stat.Size(),
-		"modified": stat.ModTime(),
+	info := &FileInfo{
+		Path:     filePath,
+		Size:     stat.Size(),
+		Modified: stat.ModTime(),
 	}
 
 	// Try to read version info
@@ -242,9 +252,9 @@ func GetFileInfo(filePath string) (map[string]interface{}, error) {
 	if err == nil && len(data) > 0 {
 		var fileData FileData
 		if err := json.Unmarshal(data, &fileData); err == nil {
-			info["version"] = fileData.Version
-			info["created"] = fileData.CreatedAt
-			info["task_count"] = len(fileData.Tasks)
+			info.Version = fileData.Version
+			info.Created = fileData.CreatedAt
+			info.TaskCount = len(fileData.Tasks)
 		}
 	}
 
