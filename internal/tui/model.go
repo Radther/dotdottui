@@ -8,6 +8,7 @@ import (
 	"dotdot/internal/storage"
 
 	"github.com/charmbracelet/bubbles/v2/textinput"
+	"github.com/charmbracelet/bubbles/v2/viewport"
 	tea "github.com/charmbracelet/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss/v2"
 	"github.com/google/uuid"
@@ -21,6 +22,7 @@ type Model struct {
 	previousID string
 	editing    bool
 	textInput  textinput.Model
+	viewport   viewport.Model
 	filePath   string // Path to the current task file
 	autoSave   bool   // Enable auto-save after operations
 	lastError  string // Last error message to display
@@ -111,12 +113,19 @@ func NewModelWithFile(filePath string) Model {
 		cursorID = tasks[0].id
 	}
 
+	// Initialize viewport
+	vp := viewport.New(
+		viewport.WithWidth(80),
+		viewport.WithHeight(24),
+	) // Default size, will be updated on first WindowSizeMsg
+
 	return Model{
 		tasks:      tasks,
 		cursorID:   cursorID,
 		previousID: "",
 		editing:    false,
 		textInput:  ti,
+		viewport:   vp,
 		filePath:   filePath,
 		autoSave:   filePath != "", // Enable auto-save when file path is provided
 		lastError:  loadError,
@@ -131,6 +140,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
+		// Reserve space for title (2 lines) and error message if shown (2 lines)
+		headerHeight := 2
+		footerHeight := 0
+		if m.showError {
+			footerHeight = 2
+		}
+
+		// Calculate viewport dimensions
+		viewportWidth := m.width - TotalPadding*2
+		viewportHeight := m.height - headerHeight - footerHeight - 2 // -2 for padding
+		if viewportWidth < 0 {
+			viewportWidth = 0
+		}
+		if viewportHeight < 0 {
+			viewportHeight = 0
+		}
+
+		// Update viewport dimensions
+		m.viewport = viewport.New(
+			viewport.WithWidth(viewportWidth),
+			viewport.WithHeight(viewportHeight),
+		)
+
 	case tea.KeyMsg:
 		if m.editing {
 			return m.handleEditingMode(msg)
@@ -138,6 +171,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleNormalMode(msg)
 		}
 	}
+
 	return m, nil
 }
 
@@ -225,30 +259,39 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	// Build title with task list indicator
-	titleText := "Task Manager"
-	if m.filePath != "" {
-		taskListName := m.getTaskListDisplayName()
-		titleText = fmt.Sprintf("Task Manager - %s", taskListName)
-	}
-
-	title := lipgloss.NewStyle().
-		Render(titleText)
-
-	// Compute inner content width to enable wrapping within the padded container
+	// Calculate inner width for content
 	innerWidth := m.width - TotalPadding*2
 	if innerWidth < 0 {
 		innerWidth = 0
 	}
 
+	// Build header (title)
+	titleText := "Task Manager"
+	if m.filePath != "" {
+		titleText = m.getTaskListDisplayName()
+	}
+	header := lipgloss.NewStyle().
+		Width(innerWidth).
+		Render(titleText)
+
+	// Build scrollable content (tasks)
 	var rows []string
+	cursorTaskPosition := 0
+	cursorTaskFound := false
 
 	// Helper function to recursively render tasks and subtasks
 	var renderTasks func(tasks []Task, indentLevel int)
 	renderTasks = func(tasks []Task, indentLevel int) {
 		for _, task := range tasks {
 			isSelected := task.id == m.cursorID
-			rows = append(rows, m.renderRow(task, innerWidth, indentLevel, isSelected, m.editing))
+			row := m.renderRow(task, innerWidth, indentLevel, isSelected, m.editing)
+			if !cursorTaskFound {
+				cursorTaskPosition += lipgloss.Height(row)
+				if isSelected {
+					cursorTaskFound = true
+				}
+			}
+			rows = append(rows, row)
 			if len(task.subtasks) > 0 {
 				renderTasks(task.subtasks, indentLevel+1)
 			}
@@ -263,31 +306,40 @@ func (m Model) View() string {
 		rows = append(rows, "", helpText) // Empty line for spacing
 	}
 
-	// Add error message if present
-	var bodyParts []string
-	bodyParts = append(bodyParts, title)
-	bodyParts = append(bodyParts, rows...)
+	// Set viewport content
+	content := lipgloss.JoinVertical(lipgloss.Left, rows...)
+	m.viewport.SetContent(content)
+	viewportOffset := 0
+	if cursorTaskPosition > m.viewport.Height()-2 {
+		viewportOffset = cursorTaskPosition - (m.viewport.Height() - 2)
+	}
+	m.viewport.YOffset = viewportOffset
 
+	// Build footer (error messages)
+	var footer string
 	if m.showError {
 		errorMsg := ErrorStyle.Render("ERROR: " + m.lastError + " (Press ESC to dismiss)")
-		bodyParts = append(bodyParts, errorMsg)
+		footer = lipgloss.NewStyle().
+			Width(innerWidth).
+			Render(errorMsg)
 	}
 
-	// Body: title + rows + error
-	body := lipgloss.JoinVertical(lipgloss.Left, bodyParts...)
+	// Combine header, viewport, and footer
+	var viewParts []string
+	viewParts = append(viewParts, header)
+	viewParts = append(viewParts, m.viewport.View())
+	if footer != "" {
+		viewParts = append(viewParts, footer)
+	}
 
-	// Wrap the entire body to inner width (mainly affects the title line).
-	wrapped := lipgloss.NewStyle().
-		Width(innerWidth).
-		MaxWidth(innerWidth).
-		Render(body)
+	view := lipgloss.JoinVertical(lipgloss.Left, viewParts...)
 
-	// Padded container with fixed outer width
+	// Wrap in padded container
 	container := lipgloss.NewStyle().
 		Padding(1, PaddingLeft).
-		Width(innerWidth + TotalPadding*2).
-		MaxWidth(innerWidth + TotalPadding*2).
-		Render(wrapped)
+		Width(m.width).
+		MaxWidth(m.width).
+		Render(view)
 
 	return container
 }
@@ -355,8 +407,8 @@ func (m Model) renderText(task Task, width int, isSelected bool, isEditing bool)
 		style = style.Underline(true)
 	}
 
-	text := style.Render(task.title)
-	return lipgloss.NewStyle().Width(width).Render(text)
+	// Apply width constraints and styling in one operation to ensure proper wrapping
+	return style.Width(width).Render(task.title)
 }
 
 // loadTasksFromFile loads tasks from a file using the storage package

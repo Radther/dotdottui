@@ -1,5 +1,6 @@
 package tui
 
+
 // Task manipulation and tree operations
 
 // traverseTasks executes a function for each task in the tree
@@ -84,7 +85,7 @@ func (m *Model) findParentTask(taskID string) (*Task, int) {
 			return nil, i // No parent for top-level tasks
 		}
 	}
-	
+
 	// Helper function to recursively search for parent
 	var search func(tasks *[]Task) (*Task, int)
 	search = func(tasks *[]Task) (*Task, int) {
@@ -104,7 +105,7 @@ func (m *Model) findParentTask(taskID string) (*Task, int) {
 		}
 		return nil, -1
 	}
-	
+
 	return search(&m.tasks)
 }
 
@@ -196,13 +197,13 @@ func (m *Model) changeTaskStatusBackward() {
 // asSubtask: true to create as subtask, false to create as sibling
 func (m *Model) createTask(asSubtask bool) string {
 	newTask := NewTask("", Todo)
-	
+
 	// Special case: if no tasks exist, add as first top-level task
 	if len(m.tasks) == 0 || m.cursorID == "" {
 		m.tasks = append(m.tasks, newTask)
 		return newTask.id
 	}
-	
+
 	if asSubtask {
 		// Create as subtask
 		currentTask := m.getCurrentTask()
@@ -211,12 +212,12 @@ func (m *Model) createTask(asSubtask bool) string {
 			m.tasks = append(m.tasks, newTask)
 			return newTask.id
 		}
-		
+
 		// Add to the end of the current task's subtasks
 		currentTask.subtasks = append(currentTask.subtasks, newTask)
 		return newTask.id
 	}
-	
+
 	// Create as sibling (below current task)
 	parent, index := m.findParentTask(m.cursorID)
 	if index < 0 {
@@ -224,12 +225,12 @@ func (m *Model) createTask(asSubtask bool) string {
 		m.tasks = append(m.tasks, newTask)
 		return newTask.id
 	}
-	
+
 	container := m.getTaskContainer(parent)
-	
+
 	// Insert after the current task
 	insertTaskInSlice(container, index+1, newTask)
-	
+
 	return newTask.id
 }
 
@@ -249,15 +250,15 @@ func (m *Model) deleteCurrentTask() {
 	if index < 0 {
 		return // Task not found
 	}
-	
+
 	container := m.getTaskContainer(parent)
-	
+
 	// Remove the task from its container
 	removeTaskFromSlice(container, index)
-	
+
 	// Update cursor to a valid task
 	m.updateCursorAfterDeletion()
-	
+
 	m.autoSaveIfEnabled()
 }
 
@@ -269,7 +270,7 @@ func (m *Model) updateCursorAfterDeletion() {
 		m.previousID = ""
 		return
 	}
-	
+
 	// Otherwise, select the first available task
 	allIDs := m.getAllTaskIDs()
 	if len(allIDs) > 0 {
@@ -286,11 +287,11 @@ func (m *Model) moveTaskUp() {
 	if index <= 0 {
 		return // Can't move up if not found or already first
 	}
-	
+
 	container := m.getTaskContainer(parent)
 	// Swap with the previous task
 	(*container)[index], (*container)[index-1] = (*container)[index-1], (*container)[index]
-	
+
 	m.autoSaveIfEnabled()
 }
 
@@ -300,15 +301,15 @@ func (m *Model) moveTaskDown() {
 	if index < 0 {
 		return // Can't move down if not found
 	}
-	
+
 	container := m.getTaskContainer(parent)
 	if index >= len(*container)-1 {
 		return // Can't move down if already last
 	}
-	
+
 	// Swap with the next task
 	(*container)[index], (*container)[index+1] = (*container)[index+1], (*container)[index]
-	
+
 	m.autoSaveIfEnabled()
 }
 
@@ -318,17 +319,17 @@ func (m *Model) unindentTask() {
 	if parent == nil {
 		return // Can't unindent top-level tasks
 	}
-	
+
 	// Remove task from current location (parent's subtasks)
 	task := removeTaskFromSlice(&parent.subtasks, index)
-	
+
 	// Find where to insert the task (after its former parent)
 	grandparent, parentIndex := m.findParentTask(parent.id)
 	container := m.getTaskContainer(grandparent)
-	
+
 	// Insert task after its former parent
 	insertTaskInSlice(container, parentIndex+1, task)
-	
+
 	m.autoSaveIfEnabled()
 }
 
@@ -338,16 +339,19 @@ func (m *Model) indentTask() {
 	if index <= 0 {
 		return // Can't indent if not found or first task
 	}
-	
+
 	container := m.getTaskContainer(parent)
 	// Get the previous sibling (which will become the parent)
 	prevSibling := &(*container)[index-1]
-	
+
 	// Remove task from current location
 	task := removeTaskFromSlice(container, index)
-	
+
 	// Add task as subtask of previous sibling
 	prevSibling.subtasks = append(prevSibling.subtasks, task)
-	
+
 	m.autoSaveIfEnabled()
 }
+
+
+

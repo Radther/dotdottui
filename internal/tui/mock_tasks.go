@@ -1,5 +1,7 @@
 package tui
 
+import "fmt"
+
 // InitializeMockTasks returns a set of sample tasks with a coherent real-world theme
 // following hierarchical nesting, varied task statuses, and proper tagging for UI testing.
 // The theme centers around baking a cake, providing a relatable and structured workflow.
@@ -73,5 +75,47 @@ func GetMinimalMockTasks() []Task {
 			NewTask("Subtask 1", Todo),
 			NewTask("Subtask 2", Active),
 		),
+	}
+}
+
+// GetLargeMockTasks returns a large set of tasks for testing scrolling behavior
+func GetLargeMockTasks() []Task {
+	tasks := []Task{}
+	
+	for i := 1; i <= 50; i++ {
+		status := Todo
+		if i%3 == 0 {
+			status = Done
+		} else if i%5 == 0 {
+			status = Active
+		}
+		
+		// Create some tasks with subtasks to test hierarchy scrolling
+		if i%7 == 0 {
+			subtasks := []Task{}
+			for j := 1; j <= 5; j++ {
+				subtasks = append(subtasks, NewTask(fmt.Sprintf("Subtask %d.%d", i, j), Todo))
+			}
+			tasks = append(tasks, NewTask(fmt.Sprintf("Task %d with many subtasks", i), status, subtasks...))
+		} else {
+			tasks = append(tasks, NewTask(fmt.Sprintf("Task %d - Long title to test wrapping behavior with extended text that might wrap in smaller terminals", i), status))
+		}
+	}
+	
+	return tasks
+}
+
+// GetMultiLineMockTasks returns tasks specifically designed to test multi-line wrapping
+func GetMultiLineMockTasks() []Task {
+	return []Task{
+		NewTask("Short task", Todo),
+		NewTask("This is a very long task title that should definitely wrap to multiple lines when displayed in a narrow terminal window and we want to test the scrolling behavior with such long tasks to make sure the cursor positioning works correctly", Active),
+		NewTask("Another short one", Done),
+		NewTask("Medium length task that might wrap depending on terminal width", Todo),
+		NewTask("This is an extremely long task description that contains a lot of text and should definitely wrap to multiple lines in most terminal windows. We want to test how well the scrolling mechanism handles tasks that take up more than one line of display space. The goal is to ensure that when navigating to such tasks, the viewport scrolls properly to show the entire task and the cursor remains visible at all times during navigation.", Todo,
+			NewTask("Subtask with normal length", Todo),
+			NewTask("Another subtask that has a very long title that should wrap to multiple lines when rendered in the terminal interface to test hierarchical multi-line task handling", Active),
+		),
+		NewTask("Final short task", Done),
 	}
 }
