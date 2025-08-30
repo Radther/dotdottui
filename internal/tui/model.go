@@ -15,18 +15,21 @@ import (
 )
 
 type Model struct {
-	width      int
-	height     int
-	tasks      []Task
-	cursorID   string
-	previousID string
-	editing    bool
-	textInput  textinput.Model
-	viewport   viewport.Model
-	filePath   string // Path to the current task file
-	autoSave   bool   // Enable auto-save after operations
-	lastError  string // Last error message to display
-	showError  bool   // Whether to show the error message
+	width         int
+	height        int
+	tasks         []Task
+	cursorID      string
+	previousID    string
+	editing       bool
+	textInput     textinput.Model
+	viewport      viewport.Model
+	filePath      string // Path to the current task file
+	autoSave      bool   // Enable auto-save after operations
+	lastError     string // Last error message to display
+	showError     bool   // Whether to show the error message
+	undoStack     []ModelSnapshot // History for undo operations
+	redoStack     []ModelSnapshot // History for redo operations
+	maxHistorySize int             // Maximum number of history entries
 }
 
 type Task struct {
@@ -43,6 +46,13 @@ const (
 	Active
 	Done
 )
+
+// ModelSnapshot represents a state snapshot for undo/redo functionality
+type ModelSnapshot struct {
+	tasks      []Task
+	cursorID   string
+	previousID string
+}
 
 // NewTask creates a new task with auto-generated UUID
 func NewTask(title string, status TaskStatus, subtasks ...Task) Task {
@@ -120,16 +130,19 @@ func NewModelWithFile(filePath string) Model {
 	) // Default size, will be updated on first WindowSizeMsg
 
 	return Model{
-		tasks:      tasks,
-		cursorID:   cursorID,
-		previousID: "",
-		editing:    false,
-		textInput:  ti,
-		viewport:   vp,
-		filePath:   filePath,
-		autoSave:   filePath != "", // Enable auto-save when file path is provided
-		lastError:  loadError,
-		showError:  loadError != "",
+		tasks:          tasks,
+		cursorID:       cursorID,
+		previousID:     "",
+		editing:        false,
+		textInput:      ti,
+		viewport:       vp,
+		filePath:       filePath,
+		autoSave:       filePath != "", // Enable auto-save when file path is provided
+		lastError:      loadError,
+		showError:      loadError != "",
+		undoStack:      make([]ModelSnapshot, 0),
+		redoStack:      make([]ModelSnapshot, 0),
+		maxHistorySize: 50,
 	}
 }
 
@@ -245,6 +258,12 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.textInput.SetValue("")
 			m.textInput.Focus()
 		}
+		return m, nil
+	case "u":
+		m.undo()
+		return m, nil
+	case "r":
+		m.redo()
 		return m, nil
 	case "enter":
 		m.editing = true
@@ -536,6 +555,8 @@ func FromTaskDataSlice(taskData []storage.TaskData) []Task {
 	}
 	return tasks
 }
+
+
 
 // Ensure Model implements tea.Model
 var _ tea.Model = (*Model)(nil)

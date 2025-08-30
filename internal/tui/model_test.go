@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -191,4 +192,207 @@ func TestCursorPositioningDuringIndentation(t *testing.T) {
 	if currentTask.id != lastSubtask.id {
 		t.Error("Expected cursor to point to the same task instance after indentation")
 	}
+}
+
+func TestUndoRedoFunctionality(t *testing.T) {
+	// Create a model with minimal mock tasks for testing
+	model := NewModel()
+	model.tasks = GetMinimalMockTasks()
+	model.cursorID = model.tasks[0].id
+
+	// Test task creation undo/redo
+	t.Run("TaskCreation", func(t *testing.T) {
+		initialCount := len(model.tasks)
+		
+		// Create a new task
+		newTaskID := model.createNewTaskBelow()
+		if len(model.tasks) != initialCount+1 {
+			t.Errorf("Expected %d tasks after creation, got %d", initialCount+1, len(model.tasks))
+		}
+		
+		// Undo task creation
+		model.undo()
+		if len(model.tasks) != initialCount {
+			t.Errorf("Expected %d tasks after undo, got %d", initialCount, len(model.tasks))
+		}
+		
+		// Redo task creation
+		model.redo()
+		if len(model.tasks) != initialCount+1 {
+			t.Errorf("Expected %d tasks after redo, got %d", initialCount+1, len(model.tasks))
+		}
+		
+		// Verify the new task exists
+		newTask := model.findTaskByID(newTaskID)
+		if newTask == nil {
+			t.Error("Expected new task to exist after redo")
+		}
+	})
+
+	// Test title editing undo/redo
+	t.Run("TitleEditing", func(t *testing.T) {
+		model := NewModel()
+		model.tasks = GetMinimalMockTasks()
+		model.cursorID = model.tasks[0].id
+		
+		originalTitle := model.tasks[0].title
+		newTitle := "Modified Task Title"
+		
+		// Edit title
+		model.editTaskTitle(model.cursorID, newTitle)
+		task := model.findTaskByID(model.cursorID)
+		if task == nil || task.title != newTitle {
+			t.Errorf("Expected title to be '%s', got '%s'", newTitle, task.title)
+		}
+		
+		// Undo title change
+		model.undo()
+		task = model.findTaskByID(model.cursorID)
+		if task == nil || task.title != originalTitle {
+			t.Errorf("Expected title to be reverted to '%s', got '%s'", originalTitle, task.title)
+		}
+		
+		// Redo title change
+		model.redo()
+		task = model.findTaskByID(model.cursorID)
+		if task == nil || task.title != newTitle {
+			t.Errorf("Expected title to be '%s' after redo, got '%s'", newTitle, task.title)
+		}
+	})
+
+	// Test status change undo/redo
+	t.Run("StatusChange", func(t *testing.T) {
+		model := NewModel()
+		model.tasks = GetMinimalMockTasks()
+		// Use third task which is Todo status and can change forward
+		model.cursorID = model.tasks[2].id
+		
+		task := model.findTaskByID(model.cursorID)
+		if task == nil {
+			t.Fatal("Could not find task")
+		}
+		originalStatus := task.status
+		
+		// Change status forward (should go from Todo to Active)
+		model.changeTaskStatusForward()
+		task = model.findTaskByID(model.cursorID)
+		if task == nil {
+			t.Fatal("Could not find task after status change")
+		}
+		if task.status == originalStatus {
+			t.Error("Expected status to change")
+		}
+		changedStatus := task.status
+		
+		// Undo status change
+		model.undo()
+		task = model.findTaskByID(model.cursorID)
+		if task == nil || task.status != originalStatus {
+			t.Errorf("Expected status to be reverted to %d, got %d", originalStatus, task.status)
+		}
+		
+		// Redo status change
+		model.redo()
+		task = model.findTaskByID(model.cursorID)
+		if task == nil || task.status != changedStatus {
+			t.Errorf("Expected status to be %d after redo, got %d", changedStatus, task.status)
+		}
+	})
+
+	// Test task movement undo/redo
+	t.Run("TaskMovement", func(t *testing.T) {
+		model := NewModel()
+		model.tasks = GetMinimalMockTasks()
+		model.cursorID = model.tasks[0].id
+		
+		originalFirstID := model.tasks[0].id
+		originalSecondID := model.tasks[1].id
+		
+		// Move task down
+		model.moveTaskDown()
+		if model.tasks[0].id != originalSecondID || model.tasks[1].id != originalFirstID {
+			t.Error("Expected tasks to be swapped after moveTaskDown")
+		}
+		
+		// Undo move
+		model.undo()
+		if model.tasks[0].id != originalFirstID || model.tasks[1].id != originalSecondID {
+			t.Error("Expected task order to be restored after undo")
+		}
+		
+		// Redo move
+		model.redo()
+		if model.tasks[0].id != originalSecondID || model.tasks[1].id != originalFirstID {
+			t.Error("Expected tasks to be swapped again after redo")
+		}
+	})
+
+	// Test cursor preservation
+	t.Run("CursorPreservation", func(t *testing.T) {
+		model := NewModel()
+		model.tasks = GetMinimalMockTasks()
+		originalCursorID := model.tasks[1].id
+		model.cursorID = originalCursorID
+		
+		// Create a new task
+		model.createNewTaskBelow()
+		
+		// Undo - cursor should be preserved
+		model.undo()
+		if model.cursorID != originalCursorID {
+			t.Errorf("Expected cursor to be preserved as %s, got %s", originalCursorID, model.cursorID)
+		}
+	})
+
+	// Test multiple operations undo/redo
+	t.Run("MultipleOperations", func(t *testing.T) {
+		model := NewModel()
+		model.tasks = GetMinimalMockTasks()
+		model.cursorID = model.tasks[0].id
+		
+		initialCount := len(model.tasks)
+		originalTitle := model.tasks[0].title
+		
+		// Perform multiple operations
+		model.editTaskTitle(model.cursorID, "Changed Title")
+		model.createNewTaskBelow()
+		model.moveTaskDown()
+		
+		// Undo all operations in reverse order
+		model.undo() // Undo move
+		model.undo() // Undo task creation
+		if len(model.tasks) != initialCount {
+			t.Errorf("Expected %d tasks after undoing creation, got %d", initialCount, len(model.tasks))
+		}
+		
+		model.undo() // Undo title change
+		task := model.findTaskByID(model.cursorID)
+		if task == nil || task.title != originalTitle {
+			t.Errorf("Expected title to be reverted to '%s', got '%s'", originalTitle, task.title)
+		}
+	})
+
+	// Test undo/redo limits
+	t.Run("HistoryLimits", func(t *testing.T) {
+		model := NewModel()
+		model.tasks = GetMinimalMockTasks()
+		model.cursorID = model.tasks[0].id
+		model.maxHistorySize = 3 // Set small limit for testing
+		
+		// Perform operations beyond the limit
+		for i := 0; i < 5; i++ {
+			model.editTaskTitle(model.cursorID, fmt.Sprintf("Title %d", i))
+		}
+		
+		// Should only be able to undo 3 operations (the limit)
+		undoCount := 0
+		for len(model.undoStack) > 0 {
+			model.undo()
+			undoCount++
+		}
+		
+		if undoCount > model.maxHistorySize {
+			t.Errorf("Expected to undo at most %d operations, undid %d", model.maxHistorySize, undoCount)
+		}
+	})
 }

@@ -150,6 +150,11 @@ func (m *Model) modifyTaskByID(taskID string, fn func(*Task)) {
 }
 
 func (m *Model) editTaskTitle(taskID string, newTitle string) {
+	// Only take snapshot if title actually changed
+	currentTask := m.findTaskByID(taskID)
+	if currentTask != nil && currentTask.title != newTitle {
+		m.takeSnapshot()
+	}
 	m.modifyTaskByID(taskID, func(task *Task) {
 		task.title = newTitle
 	})
@@ -158,6 +163,23 @@ func (m *Model) editTaskTitle(taskID string, newTitle string) {
 // changeTaskStatus changes task status in the given direction
 // direction: 1 for forward (Todo -> Active -> Done), -1 for backward (Done -> Active -> Todo)
 func (m *Model) changeTaskStatus(direction int) {
+	// Check if status will actually change
+	currentTask := m.getCurrentTask()
+	if currentTask == nil {
+		return
+	}
+	
+	willChange := false
+	if direction > 0 {
+		willChange = (currentTask.status == Todo) || (currentTask.status == Active)
+	} else {
+		willChange = (currentTask.status == Done) || (currentTask.status == Active)
+	}
+	
+	if willChange {
+		m.takeSnapshot()
+	}
+	
 	m.modifyCurrentTask(func(task *Task) {
 		if direction > 0 {
 			// Forward: Todo -> Active -> Done
@@ -196,6 +218,9 @@ func (m *Model) changeTaskStatusBackward() {
 // createTask creates a new task at the specified location
 // asSubtask: true to create as subtask, false to create as sibling
 func (m *Model) createTask(asSubtask bool) string {
+	// Take snapshot before creating task
+	m.takeSnapshot()
+	
 	newTask := NewTask("", Todo)
 
 	// Special case: if no tasks exist, add as first top-level task
@@ -251,6 +276,9 @@ func (m *Model) deleteCurrentTask() {
 		return // Task not found
 	}
 
+	// Take snapshot before deletion
+	m.takeSnapshot()
+
 	container := m.getTaskContainer(parent)
 
 	// Remove the task from its container
@@ -288,6 +316,9 @@ func (m *Model) moveTaskUp() {
 		return // Can't move up if not found or already first
 	}
 
+	// Take snapshot before moving
+	m.takeSnapshot()
+
 	container := m.getTaskContainer(parent)
 	// Swap with the previous task
 	(*container)[index], (*container)[index-1] = (*container)[index-1], (*container)[index]
@@ -307,6 +338,9 @@ func (m *Model) moveTaskDown() {
 		return // Can't move down if already last
 	}
 
+	// Take snapshot before moving
+	m.takeSnapshot()
+
 	// Swap with the next task
 	(*container)[index], (*container)[index+1] = (*container)[index+1], (*container)[index]
 
@@ -319,6 +353,9 @@ func (m *Model) unindentTask() {
 	if parent == nil {
 		return // Can't unindent top-level tasks
 	}
+
+	// Take snapshot before unindenting
+	m.takeSnapshot()
 
 	// Remove task from current location (parent's subtasks)
 	task := removeTaskFromSlice(&parent.subtasks, index)
@@ -340,6 +377,9 @@ func (m *Model) indentTask() {
 		return // Can't indent if not found or first task
 	}
 
+	// Take snapshot before indenting
+	m.takeSnapshot()
+
 	container := m.getTaskContainer(parent)
 	// Get the previous sibling (which will become the parent)
 	prevSibling := &(*container)[index-1]
@@ -353,5 +393,102 @@ func (m *Model) indentTask() {
 	m.autoSaveIfEnabled()
 }
 
+// takeSnapshot creates a snapshot of the current model state
+func (m *Model) takeSnapshot() {
+	// Create a deep copy of tasks
+	tasksCopy := make([]Task, len(m.tasks))
+	copy(tasksCopy, m.tasks)
+	tasksCopy = m.deepCopyTasks(tasksCopy)
 
+	snapshot := ModelSnapshot{
+		tasks:      tasksCopy,
+		cursorID:   m.cursorID,
+		previousID: m.previousID,
+	}
+
+	// Add to undo stack
+	m.undoStack = append(m.undoStack, snapshot)
+
+	// Limit history size
+	if len(m.undoStack) > m.maxHistorySize {
+		m.undoStack = m.undoStack[1:]
+	}
+
+	// Clear redo stack when new operation is performed
+	m.redoStack = m.redoStack[:0]
+}
+
+// deepCopyTasks creates a deep copy of a task slice
+func (m *Model) deepCopyTasks(tasks []Task) []Task {
+	result := make([]Task, len(tasks))
+	for i, task := range tasks {
+		result[i] = Task{
+			id:       task.id,
+			title:    task.title,
+			status:   task.status,
+			subtasks: m.deepCopyTasks(task.subtasks),
+		}
+	}
+	return result
+}
+
+// undo restores the last state from undo stack
+func (m *Model) undo() {
+	if len(m.undoStack) == 0 {
+		return
+	}
+
+	// Save current state to redo stack
+	currentSnapshot := ModelSnapshot{
+		tasks:      m.deepCopyTasks(m.tasks),
+		cursorID:   m.cursorID,
+		previousID: m.previousID,
+	}
+	m.redoStack = append(m.redoStack, currentSnapshot)
+
+	// Limit redo stack size
+	if len(m.redoStack) > m.maxHistorySize {
+		m.redoStack = m.redoStack[1:]
+	}
+
+	// Restore from undo stack
+	snapshot := m.undoStack[len(m.undoStack)-1]
+	m.undoStack = m.undoStack[:len(m.undoStack)-1]
+
+	m.tasks = snapshot.tasks
+	m.cursorID = snapshot.cursorID
+	m.previousID = snapshot.previousID
+
+	m.autoSaveIfEnabled()
+}
+
+// redo restores the last state from redo stack
+func (m *Model) redo() {
+	if len(m.redoStack) == 0 {
+		return
+	}
+
+	// Save current state to undo stack
+	currentSnapshot := ModelSnapshot{
+		tasks:      m.deepCopyTasks(m.tasks),
+		cursorID:   m.cursorID,
+		previousID: m.previousID,
+	}
+	m.undoStack = append(m.undoStack, currentSnapshot)
+
+	// Limit undo stack size
+	if len(m.undoStack) > m.maxHistorySize {
+		m.undoStack = m.undoStack[1:]
+	}
+
+	// Restore from redo stack
+	snapshot := m.redoStack[len(m.redoStack)-1]
+	m.redoStack = m.redoStack[:len(m.redoStack)-1]
+
+	m.tasks = snapshot.tasks
+	m.cursorID = snapshot.cursorID
+	m.previousID = snapshot.previousID
+
+	m.autoSaveIfEnabled()
+}
 
