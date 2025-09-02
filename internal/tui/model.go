@@ -15,21 +15,22 @@ import (
 )
 
 type Model struct {
-	width         int
-	height        int
-	tasks         []Task
-	cursorID      string
-	previousID    string
-	editing       bool
-	textInput     textinput.Model
-	viewport      viewport.Model
-	filePath      string // Path to the current task file
-	autoSave      bool   // Enable auto-save after operations
-	lastError     string // Last error message to display
-	showError     bool   // Whether to show the error message
-	undoStack     []ModelSnapshot // History for undo operations
-	redoStack     []ModelSnapshot // History for redo operations
+	width          int
+	height         int
+	tasks          []Task
+	cursorID       string
+	previousID     string
+	editing        bool
+	textInput      textinput.Model
+	viewport       viewport.Model
+	filePath       string          // Path to the current task file
+	autoSave       bool            // Enable auto-save after operations
+	lastError      string          // Last error message to display
+	showError      bool            // Whether to show the error message
+	undoStack      []ModelSnapshot // History for undo operations
+	redoStack      []ModelSnapshot // History for redo operations
 	maxHistorySize int             // Maximum number of history entries
+	statusMessage  string          // Debug/status message to display
 }
 
 type Task struct {
@@ -154,15 +155,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-		// Reserve space for title (2 lines) and error message if shown (2 lines)
+		// Reserve space for title (2 lines) and error message if shown (2 lines) and status (1 line)
 		headerHeight := 2
 		footerHeight := 0
 		if m.showError {
-			footerHeight = 2
+			footerHeight += 2
+		}
+		if m.statusMessage != "" {
+			footerHeight += 1
 		}
 
 		// Calculate viewport dimensions
-		viewportWidth := m.width - TotalPadding*2
+		viewportWidth := m.width - TotalPadding
 		viewportHeight := m.height - headerHeight - footerHeight - 2 // -2 for padding
 		if viewportWidth < 0 {
 			viewportWidth = 0
@@ -197,6 +201,30 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.editTaskTitle(m.cursorID, m.textInput.Value())
 		m.editing = false
 		m.textInput.Blur()
+		return m, cmd
+	case "shift+enter": // Currently unworking
+		// Save current edit, then create new task below and enter edit mode
+		m.statusMessage = "Shift+Enter pressed - creating task below"
+		m.editTaskTitle(m.cursorID, m.textInput.Value())
+		m.previousID = m.cursorID
+		newTaskID := m.createNewTaskBelow()
+		if newTaskID != "" {
+			m.cursorID = newTaskID
+			m.textInput.SetValue("")
+			m.textInput.Focus()
+		}
+		return m, cmd
+	case "ctrl+enter": // Currently unworking
+		// Save current edit, then create new task in parent and enter edit mode
+		m.statusMessage = "Ctrl+Enter pressed - creating task in parent"
+		m.editTaskTitle(m.cursorID, m.textInput.Value())
+		m.previousID = m.cursorID
+		newTaskID := m.createNewTaskInParent()
+		if newTaskID != "" {
+			m.cursorID = newTaskID
+			m.textInput.SetValue("")
+			m.textInput.Focus()
+		}
 		return m, cmd
 	case "esc":
 		// If the task title is empty, delete the task
@@ -259,6 +287,16 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.textInput.Focus()
 		}
 		return m, nil
+	case "ctrl+n":
+		m.previousID = m.cursorID
+		newTaskID := m.createNewTaskInParent()
+		if newTaskID != "" {
+			m.cursorID = newTaskID
+			m.editing = true
+			m.textInput.SetValue("")
+			m.textInput.Focus()
+		}
+		return m, nil
 	case "u":
 		m.undo()
 		return m, nil
@@ -279,7 +317,7 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() string {
 	// Calculate inner width for content
-	innerWidth := m.width - TotalPadding*2
+	innerWidth := m.width - TotalPadding
 	if innerWidth < 0 {
 		innerWidth = 0
 	}
@@ -334,13 +372,24 @@ func (m Model) View() string {
 	}
 	m.viewport.YOffset = viewportOffset
 
-	// Build footer (error messages)
-	var footer string
+	// Build footer (error messages and status)
+	var footerParts []string
 	if m.showError {
 		errorMsg := ErrorStyle.Render("ERROR: " + m.lastError + " (Press ESC to dismiss)")
+		footerParts = append(footerParts, errorMsg)
+	}
+	if m.statusMessage != "" {
+		statusMsg := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Render("Status: " + m.statusMessage)
+		footerParts = append(footerParts, statusMsg)
+	}
+
+	var footer string
+	if len(footerParts) > 0 {
 		footer = lipgloss.NewStyle().
 			Width(innerWidth).
-			Render(errorMsg)
+			Render(lipgloss.JoinVertical(lipgloss.Left, footerParts...))
 	}
 
 	// Combine header, viewport, and footer
@@ -555,8 +604,6 @@ func FromTaskDataSlice(taskData []storage.TaskData) []Task {
 	}
 	return tasks
 }
-
-
 
 // Ensure Model implements tea.Model
 var _ tea.Model = (*Model)(nil)

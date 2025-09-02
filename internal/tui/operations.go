@@ -269,6 +269,45 @@ func (m *Model) createNewSubtask() string {
 	return m.createTask(true)
 }
 
+// createNewTaskInParent creates a new task in the parent of the currently selected task
+func (m *Model) createNewTaskInParent() string {
+	// Take snapshot before creating task
+	m.takeSnapshot()
+	
+	newTask := NewTask("", Todo)
+	
+	// Special case: if no tasks exist, add as first top-level task
+	if len(m.tasks) == 0 || m.cursorID == "" {
+		m.tasks = append(m.tasks, newTask)
+		return newTask.id
+	}
+	
+	// Find the parent of the current task
+	parent, _ := m.findParentTask(m.cursorID)
+	
+	if parent == nil {
+		// Current task is at top level, create another top-level task at the end
+		m.tasks = append(m.tasks, newTask)
+		return newTask.id
+	}
+	
+	// Current task has a parent, create a sibling at the parent's level
+	grandparent, parentIndex := m.findParentTask(parent.id)
+	if parentIndex < 0 {
+		// Fallback to creating a top-level task
+		m.tasks = append(m.tasks, newTask)
+		return newTask.id
+	}
+	
+	container := m.getTaskContainer(grandparent)
+	
+	// Insert after the parent task
+	insertTaskInSlice(container, parentIndex+1, newTask)
+	
+	m.autoSaveIfEnabled()
+	return newTask.id
+}
+
 // deleteCurrentTask removes the currently selected task
 func (m *Model) deleteCurrentTask() {
 	parent, index := m.findParentTask(m.cursorID)
