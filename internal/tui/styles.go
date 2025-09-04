@@ -1,6 +1,9 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss/v2"
+import (
+	"github.com/charmbracelet/bubbles/v2/help"
+	"github.com/charmbracelet/lipgloss/v2"
+)
 
 // Color constants by semantic use
 const (
@@ -34,6 +37,16 @@ var (
 	HelpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color(DimmedColor)).
 			Italic(true)
+
+	// Help component styles
+	HelpKeyStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ActiveTaskColor))
+
+	HelpDescStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(DimmedColor))
+
+	HelpSeparatorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(DimmedColor))
 
 	// Task status styles
 	TaskDoneStyle = lipgloss.NewStyle().
@@ -82,5 +95,17 @@ func GetTaskStyle(status TaskStatus) lipgloss.Style {
 		return TaskTodoStyle
 	default:
 		return TaskTodoStyle
+	}
+}
+
+// GetHelpStyles returns custom styles for the help component
+func GetHelpStyles() help.Styles {
+	return help.Styles{
+		ShortKey:       HelpKeyStyle,
+		ShortDesc:      HelpDescStyle,
+		ShortSeparator: HelpSeparatorStyle,
+		FullKey:        HelpKeyStyle,
+		FullDesc:       HelpDescStyle,
+		FullSeparator:  HelpSeparatorStyle,
 	}
 }

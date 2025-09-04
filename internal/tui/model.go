@@ -7,6 +7,8 @@ import (
 
 	"dotdot/internal/storage"
 
+	"github.com/charmbracelet/bubbles/v2/help"
+	"github.com/charmbracelet/bubbles/v2/key"
 	"github.com/charmbracelet/bubbles/v2/textinput"
 	"github.com/charmbracelet/bubbles/v2/viewport"
 	tea "github.com/charmbracelet/bubbletea/v2"
@@ -31,6 +33,9 @@ type Model struct {
 	redoStack      []ModelSnapshot // History for redo operations
 	maxHistorySize int             // Maximum number of history entries
 	statusMessage  string          // Debug/status message to display
+	help           help.Model      // Help component
+	keyMap         KeyMap          // Key bindings
+	showFullHelp   bool            // Toggle between short and full help
 }
 
 type Task struct {
@@ -130,6 +135,11 @@ func NewModelWithFile(filePath string) Model {
 		viewport.WithHeight(24),
 	) // Default size, will be updated on first WindowSizeMsg
 
+	// Initialize help with custom styles
+	helpModel := help.New()
+	helpModel.Styles = GetHelpStyles()
+	helpModel.Width = 80 // Default width, will be updated on first WindowSizeMsg
+
 	return Model{
 		tasks:          tasks,
 		cursorID:       cursorID,
@@ -144,6 +154,9 @@ func NewModelWithFile(filePath string) Model {
 		undoStack:      make([]ModelSnapshot, 0),
 		redoStack:      make([]ModelSnapshot, 0),
 		maxHistorySize: 50,
+		help:           helpModel,
+		keyMap:         DefaultKeyMap(),
+		showFullHelp:   false,
 	}
 }
 
@@ -154,32 +167,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-
-		// Reserve space for title (2 lines) and error message if shown (2 lines) and status (1 line)
-		headerHeight := 2
-		footerHeight := 0
-		if m.showError {
-			footerHeight += 2
-		}
-		if m.statusMessage != "" {
-			footerHeight += 1
-		}
-
-		// Calculate viewport dimensions
-		viewportWidth := m.width - TotalPadding
-		viewportHeight := m.height - headerHeight - footerHeight - 2 // -2 for padding
-		if viewportWidth < 0 {
-			viewportWidth = 0
-		}
-		if viewportHeight < 0 {
-			viewportHeight = 0
-		}
-
-		// Update viewport dimensions
-		m.viewport = viewport.New(
-			viewport.WithWidth(viewportWidth),
-			viewport.WithHeight(viewportHeight),
-		)
+		m.updateLayout()
 
 	case tea.KeyMsg:
 		if m.editing {
@@ -196,15 +184,15 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.textInput, cmd = m.textInput.Update(msg)
 
-	switch msg.String() {
-	case "enter":
+	switch {
+	case key.Matches(msg, m.keyMap.Confirm):
 		m.editTaskTitle(m.cursorID, m.textInput.Value())
 		m.editing = false
 		m.textInput.Blur()
 		return m, cmd
-	case "shift+enter": // Currently unworking
+	case msg.String() == "shift+enter": // Currently unworking - no key binding defined yet
 		// Save current edit, then create new task below and enter edit mode
-		m.statusMessage = "Shift+Enter pressed - creating task below"
+		m.setStatus("Shift+Enter pressed - creating task below")
 		m.editTaskTitle(m.cursorID, m.textInput.Value())
 		m.previousID = m.cursorID
 		newTaskID := m.createNewTaskBelow()
@@ -214,9 +202,9 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.textInput.Focus()
 		}
 		return m, cmd
-	case "ctrl+enter": // Currently unworking
+	case msg.String() == "ctrl+enter": // Currently unworking - no key binding defined yet
 		// Save current edit, then create new task in parent and enter edit mode
-		m.statusMessage = "Ctrl+Enter pressed - creating task in parent"
+		m.setStatus("Ctrl+Enter pressed - creating task in parent")
 		m.editTaskTitle(m.cursorID, m.textInput.Value())
 		m.previousID = m.cursorID
 		newTaskID := m.createNewTaskInParent()
@@ -226,7 +214,7 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.textInput.Focus()
 		}
 		return m, cmd
-	case "esc":
+	case key.Matches(msg, m.keyMap.Cancel):
 		// If the task title is empty, delete the task
 		currentTask := m.getCurrentTask()
 		if currentTask != nil && currentTask.title == "" {
@@ -241,33 +229,34 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "q", "ctrl+c":
+	switch {
+	case key.Matches(msg, m.keyMap.Quit):
 		return m, tea.Quit
-	case "esc":
+	case key.Matches(msg, m.keyMap.Cancel):
 		// Clear error messages on ESC
 		if m.showError {
 			m.clearError()
+			m.updateLayout()
 			return m, nil
 		}
 		// If no error to clear, do nothing
-	case "up", "k":
+	case key.Matches(msg, m.keyMap.Up):
 		m.cursorID = m.getPreviousTaskID()
-	case "down", "j":
+	case key.Matches(msg, m.keyMap.Down):
 		m.cursorID = m.getNextTaskID()
-	case "left", "h":
+	case key.Matches(msg, m.keyMap.Left):
 		m.changeTaskStatusBackward()
-	case "right", "l":
+	case key.Matches(msg, m.keyMap.Right):
 		m.changeTaskStatusForward()
-	case "ctrl+up", "ctrl+k":
+	case key.Matches(msg, m.keyMap.MoveUp):
 		m.moveTaskUp()
-	case "ctrl+down", "ctrl+j":
+	case key.Matches(msg, m.keyMap.MoveDown):
 		m.moveTaskDown()
-	case "ctrl+left", "ctrl+h":
+	case key.Matches(msg, m.keyMap.UnindentTask):
 		m.unindentTask()
-	case "ctrl+right", "ctrl+l":
+	case key.Matches(msg, m.keyMap.IndentTask):
 		m.indentTask()
-	case "n":
+	case key.Matches(msg, m.keyMap.NewTaskBelow):
 		m.previousID = m.cursorID
 		newTaskID := m.createNewTaskBelow()
 		if newTaskID != "" {
@@ -277,7 +266,7 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.textInput.Focus()
 		}
 		return m, nil
-	case "N":
+	case key.Matches(msg, m.keyMap.NewSubtask):
 		m.previousID = m.cursorID
 		newTaskID := m.createNewSubtask()
 		if newTaskID != "" {
@@ -287,7 +276,7 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.textInput.Focus()
 		}
 		return m, nil
-	case "ctrl+n":
+	case key.Matches(msg, m.keyMap.NewTaskInParent):
 		m.previousID = m.cursorID
 		newTaskID := m.createNewTaskInParent()
 		if newTaskID != "" {
@@ -297,22 +286,26 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.textInput.Focus()
 		}
 		return m, nil
-	case "u":
+	case key.Matches(msg, m.keyMap.Undo):
 		m.undo()
 		return m, nil
-	case "r":
+	case key.Matches(msg, m.keyMap.Redo):
 		m.redo()
 		return m, nil
-	case "y":
+	case key.Matches(msg, m.keyMap.Copy):
 		m.copyCurrentTaskToClipboard()
 		return m, nil
-	case "p":
+	case key.Matches(msg, m.keyMap.Paste):
 		m.pasteTaskFromClipboard()
 		return m, nil
-	case "shift+p", "P":
+	case key.Matches(msg, m.keyMap.PasteAsSubtask):
 		m.pasteTaskAsSubtask()
 		return m, nil
-	case "enter":
+	case key.Matches(msg, m.keyMap.Help):
+		m.showFullHelp = !m.showFullHelp
+		m.updateLayout()
+		return m, nil
+	case key.Matches(msg, m.keyMap.EditTask):
 		m.editing = true
 		task := m.getCurrentTask()
 		if task != nil {
@@ -381,18 +374,8 @@ func (m Model) View() string {
 	}
 	m.viewport.YOffset = viewportOffset
 
-	// Build footer (error messages and status)
-	var footerParts []string
-	if m.showError {
-		errorMsg := ErrorStyle.Render("ERROR: " + m.lastError + " (Press ESC to dismiss)")
-		footerParts = append(footerParts, errorMsg)
-	}
-	if m.statusMessage != "" {
-		statusMsg := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240")).
-			Render("Status: " + m.statusMessage)
-		footerParts = append(footerParts, statusMsg)
-	}
+	// Build footer (error messages, status, and help)
+	footerParts := m.buildFooterParts(innerWidth)
 
 	var footer string
 	if len(footerParts) > 0 {
@@ -524,12 +507,25 @@ func (m *Model) autoSaveIfEnabled() {
 func (m *Model) setError(message string) {
 	m.lastError = message
 	m.showError = true
+	m.updateLayout()
 }
 
 // clearError clears any displayed error message
 func (m *Model) clearError() {
 	m.lastError = ""
 	m.showError = false
+}
+
+// setStatus sets a status message and updates layout
+func (m *Model) setStatus(message string) {
+	m.statusMessage = message
+	m.updateLayout()
+}
+
+// clearStatus clears the status message and updates layout
+func (m *Model) clearStatus() {
+	m.statusMessage = ""
+	m.updateLayout()
 }
 
 // getTaskListDisplayName returns a user-friendly name for the current task list
@@ -612,6 +608,75 @@ func FromTaskDataSlice(taskData []storage.TaskData) []Task {
 		tasks[i] = FromTaskData(data)
 	}
 	return tasks
+}
+
+// updateLayout recalculates and updates viewport dimensions based on current content
+func (m *Model) updateLayout() {
+	// Update help model width first
+	innerWidth := m.width - TotalPadding
+	if innerWidth < 0 {
+		innerWidth = 0
+	}
+	m.help.Width = innerWidth
+
+	// Reserve space for title (2 lines)
+	headerHeight := 2
+	
+	// Build complete footer to measure its actual height
+	footerParts := m.buildFooterParts(innerWidth)
+	footerHeight := 0
+	if len(footerParts) > 0 {
+		completeFooter := lipgloss.NewStyle().
+			Width(innerWidth).
+			Render(lipgloss.JoinVertical(lipgloss.Left, footerParts...))
+		footerHeight = lipgloss.Height(completeFooter)
+	}
+
+	// Calculate viewport dimensions
+	viewportWidth := m.width - TotalPadding
+	viewportHeight := m.height - headerHeight - footerHeight - 2 // -2 for padding
+	if viewportWidth < 0 {
+		viewportWidth = 0
+	}
+	if viewportHeight < 0 {
+		viewportHeight = 0
+	}
+
+	// Update viewport dimensions
+	m.viewport = viewport.New(
+		viewport.WithWidth(viewportWidth),
+		viewport.WithHeight(viewportHeight),
+	)
+}
+
+// buildFooterParts builds all footer components (errors, status, help)
+func (m Model) buildFooterParts(width int) []string {
+	var footerParts []string
+	
+	if m.showError {
+		errorMsg := ErrorStyle.Render("ERROR: " + m.lastError + " (Press ESC to dismiss)")
+		footerParts = append(footerParts, errorMsg)
+	}
+	
+	if m.statusMessage != "" {
+		statusMsg := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Render("Status: " + m.statusMessage)
+		footerParts = append(footerParts, statusMsg)
+	}
+	
+	// Add help section
+	var helpView string
+	if m.showFullHelp {
+		helpView = m.help.FullHelpView(m.keyMap.FullHelp())
+	} else {
+		helpView = m.help.ShortHelpView(m.keyMap.ShortHelp())
+	}
+	if helpView != "" {
+		footerParts = append(footerParts, helpView)
+	}
+	
+	return footerParts
 }
 
 // Ensure Model implements tea.Model

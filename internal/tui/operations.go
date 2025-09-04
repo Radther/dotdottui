@@ -540,7 +540,7 @@ func (m *Model) redo() {
 func (m *Model) copyCurrentTaskToClipboard() {
 	task := m.getCurrentTask()
 	if task == nil {
-		m.statusMessage = "No task selected to copy"
+		m.setStatus("No task selected to copy")
 		return
 	}
 
@@ -549,7 +549,7 @@ func (m *Model) copyCurrentTaskToClipboard() {
 		return
 	}
 
-	m.statusMessage = "Task copied to clipboard"
+	m.setStatus("Task copied to clipboard")
 	m.clearError()
 }
 
@@ -562,7 +562,7 @@ func (m *Model) pasteTaskFromClipboard() {
 	}
 
 	if strings.TrimSpace(clipContent) == "" {
-		m.statusMessage = "Clipboard is empty"
+		m.setStatus("Clipboard is empty")
 		return
 	}
 
@@ -573,7 +573,7 @@ func (m *Model) pasteTaskFromClipboard() {
 		// Set the task title to clipboard contents
 		m.editTaskTitle(newTaskID, strings.TrimSpace(clipContent))
 		m.cursorID = newTaskID
-		m.statusMessage = "Task pasted from clipboard"
+		m.setStatus("Task pasted from clipboard")
 		m.clearError()
 	}
 }
@@ -587,7 +587,7 @@ func (m *Model) pasteTaskAsSubtask() {
 	}
 
 	if strings.TrimSpace(clipContent) == "" {
-		m.statusMessage = "Clipboard is empty"
+		m.setStatus("Clipboard is empty")
 		return
 	}
 
@@ -598,7 +598,7 @@ func (m *Model) pasteTaskAsSubtask() {
 		// Set the task title to clipboard contents
 		m.editTaskTitle(newTaskID, strings.TrimSpace(clipContent))
 		m.cursorID = newTaskID
-		m.statusMessage = "Subtask pasted from clipboard"
+		m.setStatus("Subtask pasted from clipboard")
 		m.clearError()
 	}
 }
