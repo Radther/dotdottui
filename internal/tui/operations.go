@@ -1,5 +1,10 @@
 package tui
 
+import (
+	"strings"
+
+	"github.com/atotto/clipboard"
+)
 
 // Task manipulation and tree operations
 
@@ -529,5 +534,72 @@ func (m *Model) redo() {
 	m.previousID = snapshot.previousID
 
 	m.autoSaveIfEnabled()
+}
+
+// copyCurrentTaskToClipboard copies the current task's title to the system clipboard
+func (m *Model) copyCurrentTaskToClipboard() {
+	task := m.getCurrentTask()
+	if task == nil {
+		m.statusMessage = "No task selected to copy"
+		return
+	}
+
+	if err := clipboard.WriteAll(task.title); err != nil {
+		m.setError("Failed to copy to clipboard: " + err.Error())
+		return
+	}
+
+	m.statusMessage = "Task copied to clipboard"
+	m.clearError()
+}
+
+// pasteTaskFromClipboard creates a new task below current position using clipboard contents
+func (m *Model) pasteTaskFromClipboard() {
+	clipContent, err := clipboard.ReadAll()
+	if err != nil {
+		m.setError("Failed to read from clipboard: " + err.Error())
+		return
+	}
+
+	if strings.TrimSpace(clipContent) == "" {
+		m.statusMessage = "Clipboard is empty"
+		return
+	}
+
+	// Reuse existing task creation infrastructure
+	m.previousID = m.cursorID
+	newTaskID := m.createNewTaskBelow()
+	if newTaskID != "" {
+		// Set the task title to clipboard contents
+		m.editTaskTitle(newTaskID, strings.TrimSpace(clipContent))
+		m.cursorID = newTaskID
+		m.statusMessage = "Task pasted from clipboard"
+		m.clearError()
+	}
+}
+
+// pasteTaskAsSubtask creates a new subtask using clipboard contents
+func (m *Model) pasteTaskAsSubtask() {
+	clipContent, err := clipboard.ReadAll()
+	if err != nil {
+		m.setError("Failed to read from clipboard: " + err.Error())
+		return
+	}
+
+	if strings.TrimSpace(clipContent) == "" {
+		m.statusMessage = "Clipboard is empty"
+		return
+	}
+
+	// Reuse existing subtask creation infrastructure
+	m.previousID = m.cursorID
+	newTaskID := m.createNewSubtask()
+	if newTaskID != "" {
+		// Set the task title to clipboard contents
+		m.editTaskTitle(newTaskID, strings.TrimSpace(clipContent))
+		m.cursorID = newTaskID
+		m.statusMessage = "Subtask pasted from clipboard"
+		m.clearError()
+	}
 }
 

@@ -303,6 +303,15 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.redo()
 		return m, nil
+	case "y":
+		m.copyCurrentTaskToClipboard()
+		return m, nil
+	case "p":
+		m.pasteTaskFromClipboard()
+		return m, nil
+	case "shift+p", "P":
+		m.pasteTaskAsSubtask()
+		return m, nil
 	case "enter":
 		m.editing = true
 		task := m.getCurrentTask()
