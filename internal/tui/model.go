@@ -167,7 +167,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.updateLayout()
 
 	case tea.KeyMsg:
 		if m.editing {
@@ -236,7 +235,6 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Clear error messages on ESC
 		if m.showError {
 			m.clearError()
-			m.updateLayout()
 			return m, nil
 		}
 		// If no error to clear, do nothing
@@ -303,7 +301,6 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case key.Matches(msg, m.keyMap.Help):
 		m.showFullHelp = !m.showFullHelp
-		m.updateLayout()
 		return m, nil
 	case key.Matches(msg, m.keyMap.EditTask):
 		m.editing = true
@@ -332,6 +329,37 @@ func (m Model) View() string {
 	header := lipgloss.NewStyle().
 		Width(innerWidth).
 		Render(titleText)
+
+	// Update help model width and build footer (error messages, status, and help)
+	m.help.Width = innerWidth
+	footerParts := m.buildFooterParts(innerWidth)
+
+	var footer string
+	if len(footerParts) > 0 {
+		footer = lipgloss.NewStyle().
+			Width(innerWidth).
+			Render(lipgloss.JoinVertical(lipgloss.Left, footerParts...))
+	}
+
+	// Calculate viewport dimensions based on actual header and footer
+	headerHeight := lipgloss.Height(header)
+	footerHeight := 0
+	if footer != "" {
+		footerHeight = lipgloss.Height(footer)
+	}
+
+	viewportWidth := innerWidth
+	viewportHeight := m.height - headerHeight - footerHeight - 2 // -2 for padding
+	if viewportWidth < 0 {
+		viewportWidth = 0
+	}
+	if viewportHeight < 0 {
+		viewportHeight = 0
+	}
+
+	// Update viewport dimensions
+	m.viewport.SetWidth(viewportWidth)
+	m.viewport.SetHeight(viewportHeight)
 
 	// Build scrollable content (tasks)
 	var rows []string
@@ -374,16 +402,6 @@ func (m Model) View() string {
 	}
 	m.viewport.YOffset = viewportOffset
 
-	// Build footer (error messages, status, and help)
-	footerParts := m.buildFooterParts(innerWidth)
-
-	var footer string
-	if len(footerParts) > 0 {
-		footer = lipgloss.NewStyle().
-			Width(innerWidth).
-			Render(lipgloss.JoinVertical(lipgloss.Left, footerParts...))
-	}
-
 	// Combine header, viewport, and footer
 	var viewParts []string
 	viewParts = append(viewParts, header)
@@ -396,7 +414,7 @@ func (m Model) View() string {
 
 	// Wrap in padded container
 	container := lipgloss.NewStyle().
-		Padding(1, PaddingLeft).
+		Padding(1, 0, 0, PaddingLeft).
 		Width(m.width).
 		MaxWidth(m.width).
 		Render(view)
@@ -507,7 +525,6 @@ func (m *Model) autoSaveIfEnabled() {
 func (m *Model) setError(message string) {
 	m.lastError = message
 	m.showError = true
-	m.updateLayout()
 }
 
 // clearError clears any displayed error message
@@ -516,16 +533,14 @@ func (m *Model) clearError() {
 	m.showError = false
 }
 
-// setStatus sets a status message and updates layout
+// setStatus sets a status message
 func (m *Model) setStatus(message string) {
 	m.statusMessage = message
-	m.updateLayout()
 }
 
-// clearStatus clears the status message and updates layout
+// clearStatus clears the status message
 func (m *Model) clearStatus() {
 	m.statusMessage = ""
-	m.updateLayout()
 }
 
 // getTaskListDisplayName returns a user-friendly name for the current task list
@@ -610,61 +625,22 @@ func FromTaskDataSlice(taskData []storage.TaskData) []Task {
 	return tasks
 }
 
-// updateLayout recalculates and updates viewport dimensions based on current content
-func (m *Model) updateLayout() {
-	// Update help model width first
-	innerWidth := m.width - TotalPadding
-	if innerWidth < 0 {
-		innerWidth = 0
-	}
-	m.help.Width = innerWidth
-
-	// Reserve space for title (2 lines)
-	headerHeight := 2
-	
-	// Build complete footer to measure its actual height
-	footerParts := m.buildFooterParts(innerWidth)
-	footerHeight := 0
-	if len(footerParts) > 0 {
-		completeFooter := lipgloss.NewStyle().
-			Width(innerWidth).
-			Render(lipgloss.JoinVertical(lipgloss.Left, footerParts...))
-		footerHeight = lipgloss.Height(completeFooter)
-	}
-
-	// Calculate viewport dimensions
-	viewportWidth := m.width - TotalPadding
-	viewportHeight := m.height - headerHeight - footerHeight - 2 // -2 for padding
-	if viewportWidth < 0 {
-		viewportWidth = 0
-	}
-	if viewportHeight < 0 {
-		viewportHeight = 0
-	}
-
-	// Update viewport dimensions
-	m.viewport = viewport.New(
-		viewport.WithWidth(viewportWidth),
-		viewport.WithHeight(viewportHeight),
-	)
-}
-
 // buildFooterParts builds all footer components (errors, status, help)
 func (m Model) buildFooterParts(width int) []string {
 	var footerParts []string
-	
+
 	if m.showError {
 		errorMsg := ErrorStyle.Render("ERROR: " + m.lastError + " (Press ESC to dismiss)")
 		footerParts = append(footerParts, errorMsg)
 	}
-	
+
 	if m.statusMessage != "" {
 		statusMsg := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")).
 			Render("Status: " + m.statusMessage)
 		footerParts = append(footerParts, statusMsg)
 	}
-	
+
 	// Add help section
 	var helpView string
 	if m.showFullHelp {
@@ -675,7 +651,7 @@ func (m Model) buildFooterParts(width int) []string {
 	if helpView != "" {
 		footerParts = append(footerParts, helpView)
 	}
-	
+
 	return footerParts
 }
 
