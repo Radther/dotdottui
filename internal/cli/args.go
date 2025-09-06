@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	
+
 	"dotdot/internal/storage"
 )
 
@@ -82,7 +82,7 @@ func ParseArgs() (*Command, error) {
 		// Two arguments: command and name
 		cmd.Action = args[0]
 		cmd.Name = args[1]
-		
+
 		if cmd.Action != "open" && cmd.Action != "delete" {
 			return nil, fmt.Errorf("invalid command: %s", cmd.Action)
 		}
@@ -126,17 +126,16 @@ func (c *Command) resolveFilePath() (string, error) {
 		if c.Name == "" {
 			c.Name = "tasks"
 		}
-		
+
 		configDir, err := storage.GetConfigDir()
 		if err != nil {
 			return "", fmt.Errorf("failed to get config directory: %w", err)
 		}
-		
+
 		tasksDir := filepath.Join(configDir, "dotdot", "tasks")
 		return filepath.Join(tasksDir, c.Name+".dot"), nil
 	}
 }
-
 
 // IsGlobal returns true if this command operates on global task lists
 func (c *Command) IsGlobal() bool {

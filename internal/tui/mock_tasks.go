@@ -81,7 +81,7 @@ func GetMinimalMockTasks() []Task {
 // GetLargeMockTasks returns a large set of tasks for testing scrolling behavior
 func GetLargeMockTasks() []Task {
 	tasks := []Task{}
-	
+
 	for i := 1; i <= 50; i++ {
 		status := Todo
 		if i%3 == 0 {
@@ -89,7 +89,7 @@ func GetLargeMockTasks() []Task {
 		} else if i%5 == 0 {
 			status = Active
 		}
-		
+
 		// Create some tasks with subtasks to test hierarchy scrolling
 		if i%7 == 0 {
 			subtasks := []Task{}
@@ -101,7 +101,7 @@ func GetLargeMockTasks() []Task {
 			tasks = append(tasks, NewTask(fmt.Sprintf("Task %d - Long title to test wrapping behavior with extended text that might wrap in smaller terminals", i), status))
 		}
 	}
-	
+
 	return tasks
 }
 

@@ -11,10 +11,10 @@ import (
 
 // TaskData represents the serializable task structure
 type TaskData struct {
-	ID       string      `json:"id"`
-	Title    string      `json:"title"`
-	Status   int         `json:"status"`
-	Subtasks []TaskData  `json:"subtasks"`
+	ID       string     `json:"id"`
+	Title    string     `json:"title"`
+	Status   int        `json:"status"`
+	Subtasks []TaskData `json:"subtasks"`
 }
 
 // FileData represents the complete file structure with metadata
@@ -97,7 +97,7 @@ func LoadTasks(filePath string) ([]TaskData, error) {
 		if legacyErr := json.Unmarshal(data, &tasks); legacyErr != nil {
 			return nil, fmt.Errorf("failed to parse JSON file %s: %w (legacy parse also failed: %v)", filePath, err, legacyErr)
 		}
-		
+
 		// Successfully parsed legacy format
 		fmt.Fprintf(os.Stderr, "Warning: loaded legacy format file %s, will be upgraded on next save\n", filePath)
 		return tasks, nil
@@ -105,7 +105,7 @@ func LoadTasks(filePath string) ([]TaskData, error) {
 
 	// Validate version compatibility
 	if fileData.Version != CurrentVersion {
-		fmt.Fprintf(os.Stderr, "Warning: file %s has version %s, current version is %s\n", 
+		fmt.Fprintf(os.Stderr, "Warning: file %s has version %s, current version is %s\n",
 			filePath, fileData.Version, CurrentVersion)
 	}
 
@@ -183,7 +183,7 @@ func createBackup(filePath string) error {
 	}
 
 	backupPath := filePath + ".bak"
-	
+
 	// Read original file
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -205,12 +205,12 @@ func GetConfigDir() (string, error) {
 	if configDir := os.Getenv("XDG_CONFIG_HOME"); configDir != "" {
 		return configDir, nil
 	}
-	
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	
+
 	return filepath.Join(homeDir, ".config"), nil
 }
 

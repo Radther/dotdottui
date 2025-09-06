@@ -173,18 +173,18 @@ func (m *Model) changeTaskStatus(direction int) {
 	if currentTask == nil {
 		return
 	}
-	
+
 	willChange := false
 	if direction > 0 {
 		willChange = (currentTask.status == Todo) || (currentTask.status == Active)
 	} else {
 		willChange = (currentTask.status == Done) || (currentTask.status == Active)
 	}
-	
+
 	if willChange {
 		m.takeSnapshot()
 	}
-	
+
 	m.modifyCurrentTask(func(task *Task) {
 		if direction > 0 {
 			// Forward: Todo -> Active -> Done
@@ -225,7 +225,7 @@ func (m *Model) changeTaskStatusBackward() {
 func (m *Model) createTask(asSubtask bool) string {
 	// Take snapshot before creating task
 	m.takeSnapshot()
-	
+
 	newTask := NewTask("", Todo)
 
 	// Special case: if no tasks exist, add as first top-level task
@@ -278,24 +278,24 @@ func (m *Model) createNewSubtask() string {
 func (m *Model) createNewTaskInParent() string {
 	// Take snapshot before creating task
 	m.takeSnapshot()
-	
+
 	newTask := NewTask("", Todo)
-	
+
 	// Special case: if no tasks exist, add as first top-level task
 	if len(m.tasks) == 0 || m.cursorID == "" {
 		m.tasks = append(m.tasks, newTask)
 		return newTask.id
 	}
-	
+
 	// Find the parent of the current task
 	parent, _ := m.findParentTask(m.cursorID)
-	
+
 	if parent == nil {
 		// Current task is at top level, create another top-level task at the end
 		m.tasks = append(m.tasks, newTask)
 		return newTask.id
 	}
-	
+
 	// Current task has a parent, create a sibling at the parent's level
 	grandparent, parentIndex := m.findParentTask(parent.id)
 	if parentIndex < 0 {
@@ -303,12 +303,12 @@ func (m *Model) createNewTaskInParent() string {
 		m.tasks = append(m.tasks, newTask)
 		return newTask.id
 	}
-	
+
 	container := m.getTaskContainer(grandparent)
-	
+
 	// Insert after the parent task
 	insertTaskInSlice(container, parentIndex+1, newTask)
-	
+
 	m.autoSaveIfEnabled()
 	return newTask.id
 }
@@ -602,4 +602,3 @@ func (m *Model) pasteTaskAsSubtask() {
 		m.clearError()
 	}
 }
-

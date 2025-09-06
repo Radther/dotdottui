@@ -7,11 +7,11 @@ import (
 
 // Color constants by semantic use
 const (
-	CursorColor      = "1" // Red - cursor and selection indicator
-	ActiveTaskColor  = "2" // Green - active tasks
-	DimmedColor      = "8" // Gray - dimmed/disabled elements  
-	ErrorBgColor     = "0" // Black - error message background
-	ErrorTextColor   = "1" // Red - error text
+	CursorColor     = "1" // Red - cursor and selection indicator
+	ActiveTaskColor = "2" // Green - active tasks
+	DimmedColor     = "8" // Gray - dimmed/disabled elements
+	ErrorBgColor    = "0" // Black - error message background
+	ErrorTextColor  = "1" // Red - error text
 )
 
 // UI spacing constants
@@ -46,7 +46,7 @@ var (
 			Foreground(lipgloss.Color(DimmedColor))
 
 	HelpSeparatorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(DimmedColor))
+				Foreground(lipgloss.Color(DimmedColor))
 
 	// Task status styles
 	TaskDoneStyle = lipgloss.NewStyle().
@@ -80,7 +80,7 @@ var (
 // Task status bullet symbols
 var BulletSymbols = map[TaskStatus]string{
 	Done:   "◉",
-	Active: "◎", 
+	Active: "◎",
 	Todo:   "○",
 }
 

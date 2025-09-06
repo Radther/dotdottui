@@ -184,14 +184,15 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.textInput, cmd = m.textInput.Update(msg)
 
 	switch {
-	case key.Matches(msg, m.keyMap.Confirm):
-		m.editTaskTitle(m.cursorID, m.textInput.Value())
-		m.editing = false
-		m.textInput.Blur()
-		return m, cmd
 	case key.Matches(msg, m.keyMap.NewTaskBelowFromEdit):
-		// Save current edit, then create new task below and enter edit mode
-		m.setStatus("Shift+Enter pressed - creating task below")
+		// Enter key: save current edit, then create new task below and enter edit mode
+		// Special case: if current task is empty, delete it and enter normal mode
+		if m.textInput.Value() == "" {
+			m.deleteCurrentTask()
+			m.editing = false
+			m.textInput.Blur()
+			return m, cmd
+		}
 		m.editTaskTitle(m.cursorID, m.textInput.Value())
 		m.previousID = m.cursorID
 		newTaskID := m.createNewTaskBelow()
@@ -201,9 +202,19 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.textInput.Focus()
 		}
 		return m, cmd
+	case key.Matches(msg, m.keyMap.NewSubtaskFromEdit):
+		// Shift+Enter: save current edit, then create new subtask and enter edit mode
+		m.editTaskTitle(m.cursorID, m.textInput.Value())
+		m.previousID = m.cursorID
+		newTaskID := m.createNewSubtask()
+		if newTaskID != "" {
+			m.cursorID = newTaskID
+			m.textInput.SetValue("")
+			m.textInput.Focus()
+		}
+		return m, cmd
 	case key.Matches(msg, m.keyMap.NewTaskInParentFromEdit):
-		// Save current edit, then create new task in parent and enter edit mode
-		m.setStatus("Ctrl+Enter pressed - creating task in parent")
+		// Ctrl+Enter: save current edit, then create new task in parent and enter edit mode
 		m.editTaskTitle(m.cursorID, m.textInput.Value())
 		m.previousID = m.cursorID
 		newTaskID := m.createNewTaskInParent()
@@ -214,7 +225,7 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 	case key.Matches(msg, m.keyMap.Cancel):
-		// If the task title is empty, delete the task
+		// ESC: If the task title is empty, delete the task
 		currentTask := m.getCurrentTask()
 		if currentTask != nil && currentTask.title == "" {
 			m.deleteCurrentTask()

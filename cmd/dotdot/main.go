@@ -34,7 +34,7 @@ func main() {
 
 func runTUI(filePath string) {
 	model := tui.NewModelWithFile(filePath)
-	
+
 	program := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := program.Run(); err != nil {
 		log.Fatal(err)
@@ -45,7 +45,7 @@ func listTasks(cmd *cli.Command) {
 	var taskLists []string
 	var err error
 	var location, emptyMsg string
-	
+
 	if cmd.Local {
 		taskLists, err = storage.ListLocalTasks()
 		location = "Local"
@@ -55,12 +55,12 @@ func listTasks(cmd *cli.Command) {
 		location = "Global"
 		emptyMsg = "No global task lists found"
 	}
-	
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error listing %s tasks: %v\n", strings.ToLower(location), err)
 		os.Exit(1)
 	}
-	
+
 	if len(taskLists) == 0 {
 		fmt.Println(emptyMsg)
 	} else {
@@ -80,7 +80,7 @@ func deleteTasks(cmd *cli.Command) {
 		fmt.Fprintf(os.Stderr, "Task list file does not exist: %s\n", cmd.FilePath)
 		os.Exit(1)
 	}
-	
+
 	// Confirm deletion
 	fmt.Printf("Are you sure you want to delete '%s'? (y/N): ", cmd.FilePath)
 	var response string
@@ -88,11 +88,11 @@ func deleteTasks(cmd *cli.Command) {
 		fmt.Println("Deletion cancelled")
 		return
 	}
-	
+
 	if err := storage.DeleteTaskList(cmd.FilePath); err != nil {
 		fmt.Fprintf(os.Stderr, "Error deleting task list: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Printf("Successfully deleted task list: %s\n", cmd.FilePath)
 }

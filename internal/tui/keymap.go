@@ -22,10 +22,11 @@ type KeyMap struct {
 	UnindentTask key.Binding
 
 	// Edit mode
-	EditTask               key.Binding
-	Confirm                key.Binding
-	Cancel                 key.Binding
-	NewTaskBelowFromEdit   key.Binding
+	EditTask                key.Binding
+	Confirm                 key.Binding
+	Cancel                  key.Binding
+	NewTaskBelowFromEdit    key.Binding
+	NewSubtaskFromEdit      key.Binding
 	NewTaskInParentFromEdit key.Binding
 
 	// Undo/Redo
@@ -44,7 +45,7 @@ type KeyMap struct {
 
 // ShortHelp returns keybindings to be shown in the mini help view.
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.NewTaskBelow, k.EditTask, k.Help, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.NewTaskBelow, k.NewSubtask, k.EditTask, k.Help, k.Quit}
 }
 
 // FullHelp returns keybindings for the expanded help view.
@@ -59,7 +60,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 		// Edit & Actions
 		{k.Undo, k.Redo, k.Copy, k.Paste, k.PasteAsSubtask},
 		// Edit Mode Actions
-		{k.NewTaskBelowFromEdit, k.NewTaskInParentFromEdit},
+		{k.NewTaskBelowFromEdit, k.NewSubtaskFromEdit, k.NewTaskInParentFromEdit},
 		// General
 		{k.Help, k.Quit},
 	}
@@ -88,16 +89,16 @@ func DefaultKeyMap() KeyMap {
 
 		// Task creation
 		NewTaskBelow: key.NewBinding(
-			key.WithKeys("n"),
-			key.WithHelp("n", "new task below"),
+			key.WithKeys("enter"),
+			key.WithHelp("↵", "new task below"),
 		),
 		NewSubtask: key.NewBinding(
-			key.WithKeys("N", "shift+enter"),
-			key.WithHelp("N/shift+↵", "new subtask"),
+			key.WithKeys("shift+enter"),
+			key.WithHelp("shift+↵", "new subtask"),
 		),
 		NewTaskInParent: key.NewBinding(
-			key.WithKeys("ctrl+n", "ctrl+enter"),
-			key.WithHelp("ctrl+n/ctrl+↵", "new task in parent"),
+			key.WithKeys("ctrl+enter"),
+			key.WithHelp("ctrl+↵", "new task in parent"),
 		),
 
 		// Task management
@@ -120,8 +121,8 @@ func DefaultKeyMap() KeyMap {
 
 		// Edit mode
 		EditTask: key.NewBinding(
-			key.WithKeys("enter"),
-			key.WithHelp("↵", "edit task"),
+			key.WithKeys("e"),
+			key.WithHelp("e", "edit task"),
 		),
 		Confirm: key.NewBinding(
 			key.WithKeys("enter"),
@@ -132,8 +133,12 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("esc", "cancel"),
 		),
 		NewTaskBelowFromEdit: key.NewBinding(
+			key.WithKeys("enter"),
+			key.WithHelp("↵", "save & new task below"),
+		),
+		NewSubtaskFromEdit: key.NewBinding(
 			key.WithKeys("shift+enter"),
-			key.WithHelp("shift+↵", "save & new task below"),
+			key.WithHelp("shift+↵", "save & new subtask"),
 		),
 		NewTaskInParentFromEdit: key.NewBinding(
 			key.WithKeys("ctrl+enter"),
