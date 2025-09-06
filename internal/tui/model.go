@@ -321,6 +321,9 @@ func (m Model) handleNormalMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.textInput.Focus()
 		return m, nil
+	case key.Matches(msg, m.keyMap.DeleteTask):
+		m.deleteCurrentTask()
+		return m, nil
 	}
 	return m, nil
 }

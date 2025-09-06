@@ -20,6 +20,7 @@ type KeyMap struct {
 	MoveDown     key.Binding
 	IndentTask   key.Binding
 	UnindentTask key.Binding
+	DeleteTask   key.Binding
 
 	// Edit mode
 	EditTask                key.Binding
@@ -45,7 +46,7 @@ type KeyMap struct {
 
 // ShortHelp returns keybindings to be shown in the mini help view.
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.NewTaskBelow, k.NewSubtask, k.EditTask, k.Help, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.NewTaskBelow, k.NewSubtask, k.EditTask, k.DeleteTask, k.Help, k.Quit}
 }
 
 // FullHelp returns keybindings for the expanded help view.
@@ -56,7 +57,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 		// Task Operations
 		{k.NewTaskBelow, k.NewSubtask, k.NewTaskInParent, k.EditTask},
 		// Task Management
-		{k.MoveUp, k.MoveDown, k.IndentTask, k.UnindentTask},
+		{k.MoveUp, k.MoveDown, k.IndentTask, k.UnindentTask, k.DeleteTask},
 		// Edit & Actions
 		{k.Undo, k.Redo, k.Copy, k.Paste, k.PasteAsSubtask},
 		// Edit Mode Actions
@@ -117,6 +118,10 @@ func DefaultKeyMap() KeyMap {
 		UnindentTask: key.NewBinding(
 			key.WithKeys("ctrl+h", "ctrl+left"),
 			key.WithHelp("ctrl+←/h", "unindent task"),
+		),
+		DeleteTask: key.NewBinding(
+			key.WithKeys("d"),
+			key.WithHelp("d", "delete task"),
 		),
 
 		// Edit mode
