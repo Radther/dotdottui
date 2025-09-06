@@ -122,6 +122,23 @@ func (m *Model) getTaskContainer(parent *Task) *[]Task {
 	return &parent.subtasks
 }
 
+// getParentChainIDs returns all parent task IDs from immediate parent up to root
+func (m *Model) getParentChainIDs(taskID string) []string {
+	var parentIDs []string
+	currentTaskID := taskID
+	
+	for {
+		parent, _ := m.findParentTask(currentTaskID)
+		if parent == nil {
+			break // Reached top level
+		}
+		parentIDs = append(parentIDs, parent.id)
+		currentTaskID = parent.id
+	}
+	
+	return parentIDs
+}
+
 // removeTaskFromSlice removes a task at the given index from a slice
 func removeTaskFromSlice(slice *[]Task, index int) Task {
 	task := (*slice)[index]

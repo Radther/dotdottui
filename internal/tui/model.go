@@ -379,13 +379,16 @@ func (m Model) View() string {
 	var rows []string
 	cursorTaskPosition := 0
 	cursorTaskFound := false
+	
+	// Get parent chain for underlining parent tasks
+	parentChainIDs := m.getParentChainIDs(m.cursorID)
 
 	// Helper function to recursively render tasks and subtasks
 	var renderTasks func(tasks []Task, indentLevel int)
 	renderTasks = func(tasks []Task, indentLevel int) {
 		for _, task := range tasks {
 			isSelected := task.id == m.cursorID
-			row := m.renderRow(task, innerWidth, indentLevel, isSelected, m.editing)
+			row := m.renderRow(task, innerWidth, indentLevel, isSelected, m.editing, parentChainIDs)
 			if !cursorTaskFound {
 				cursorTaskPosition += lipgloss.Height(row)
 				if isSelected {
@@ -436,12 +439,12 @@ func (m Model) View() string {
 	return container
 }
 
-func (m Model) renderRow(task Task, width int, indentLevel int, isSelected bool, isEditing bool) string {
+func (m Model) renderRow(task Task, width int, indentLevel int, isSelected bool, isEditing bool, parentChainIDs []string) string {
 	indent := m.renderIndentation(indentLevel)
 	bulletRendered := m.renderBullet(task.status, isEditing, isSelected)
 	cursorRendered := m.renderCursor(isSelected, isEditing)
 	textColWidth := m.calculateTextWidth(width, indentLevel)
-	textRendered := m.renderText(task, textColWidth, isSelected, isEditing)
+	textRendered := m.renderText(task, textColWidth, isSelected, isEditing, parentChainIDs)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, cursorRendered, lipgloss.NewStyle().Render(indent), bulletRendered, textRendered)
 }
@@ -487,15 +490,24 @@ func (m Model) calculateTextWidth(width int, indentLevel int) int {
 	return textColWidth
 }
 
-func (m Model) renderText(task Task, width int, isSelected bool, isEditing bool) string {
+func (m Model) renderText(task Task, width int, isSelected bool, isEditing bool, parentChainIDs []string) string {
 	if isEditing && isSelected {
 		return lipgloss.NewStyle().Width(width).Render(m.textInput.View())
+	}
+
+	// Check if this task is a parent of the selected task
+	isParentOfSelected := false
+	for _, parentID := range parentChainIDs {
+		if parentID == task.id {
+			isParentOfSelected = true
+			break
+		}
 	}
 
 	style := GetTaskStyle(task.status)
 	if isEditing && !isSelected {
 		style = lipgloss.NewStyle().Foreground(lipgloss.Color(DimmedColor))
-	} else if isSelected && !isEditing {
+	} else if (isSelected || isParentOfSelected) && !isEditing {
 		style = style.Underline(true)
 	}
 
