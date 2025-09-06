@@ -103,7 +103,7 @@ func NewModel() Model {
 
 func NewModelWithFile(filePath string) Model {
 	ti := textinput.New()
-	ti.Placeholder = "Task title"
+	ti.Placeholder = "bbbq"
 	ti.Prompt = ""
 	ti.Focus()
 
@@ -189,7 +189,7 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.editing = false
 		m.textInput.Blur()
 		return m, cmd
-	case msg.String() == "shift+enter": // Currently unworking - no key binding defined yet
+	case key.Matches(msg, m.keyMap.NewTaskBelowFromEdit):
 		// Save current edit, then create new task below and enter edit mode
 		m.setStatus("Shift+Enter pressed - creating task below")
 		m.editTaskTitle(m.cursorID, m.textInput.Value())
@@ -201,7 +201,7 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.textInput.Focus()
 		}
 		return m, cmd
-	case msg.String() == "ctrl+enter": // Currently unworking - no key binding defined yet
+	case key.Matches(msg, m.keyMap.NewTaskInParentFromEdit):
 		// Save current edit, then create new task in parent and enter edit mode
 		m.setStatus("Ctrl+Enter pressed - creating task in parent")
 		m.editTaskTitle(m.cursorID, m.textInput.Value())

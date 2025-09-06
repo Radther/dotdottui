@@ -16,24 +16,26 @@ type KeyMap struct {
 	NewTaskInParent key.Binding
 
 	// Task management
-	MoveUp      key.Binding
-	MoveDown    key.Binding
-	IndentTask  key.Binding
+	MoveUp       key.Binding
+	MoveDown     key.Binding
+	IndentTask   key.Binding
 	UnindentTask key.Binding
 
 	// Edit mode
-	EditTask key.Binding
-	Confirm  key.Binding
-	Cancel   key.Binding
+	EditTask               key.Binding
+	Confirm                key.Binding
+	Cancel                 key.Binding
+	NewTaskBelowFromEdit   key.Binding
+	NewTaskInParentFromEdit key.Binding
 
 	// Undo/Redo
 	Undo key.Binding
 	Redo key.Binding
 
 	// Clipboard
-	Copy            key.Binding
-	Paste           key.Binding
-	PasteAsSubtask  key.Binding
+	Copy           key.Binding
+	Paste          key.Binding
+	PasteAsSubtask key.Binding
 
 	// General
 	Help key.Binding
@@ -56,6 +58,8 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 		{k.MoveUp, k.MoveDown, k.IndentTask, k.UnindentTask},
 		// Edit & Actions
 		{k.Undo, k.Redo, k.Copy, k.Paste, k.PasteAsSubtask},
+		// Edit Mode Actions
+		{k.NewTaskBelowFromEdit, k.NewTaskInParentFromEdit},
 		// General
 		{k.Help, k.Quit},
 	}
@@ -88,12 +92,12 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("n", "new task below"),
 		),
 		NewSubtask: key.NewBinding(
-			key.WithKeys("N"),
-			key.WithHelp("N", "new subtask"),
+			key.WithKeys("N", "shift+enter"),
+			key.WithHelp("N/shift+↵", "new subtask"),
 		),
 		NewTaskInParent: key.NewBinding(
-			key.WithKeys("ctrl+n"),
-			key.WithHelp("ctrl+n", "new task in parent"),
+			key.WithKeys("ctrl+n", "ctrl+enter"),
+			key.WithHelp("ctrl+n/ctrl+↵", "new task in parent"),
 		),
 
 		// Task management
@@ -126,6 +130,14 @@ func DefaultKeyMap() KeyMap {
 		Cancel: key.NewBinding(
 			key.WithKeys("esc"),
 			key.WithHelp("esc", "cancel"),
+		),
+		NewTaskBelowFromEdit: key.NewBinding(
+			key.WithKeys("shift+enter"),
+			key.WithHelp("shift+↵", "save & new task below"),
+		),
+		NewTaskInParentFromEdit: key.NewBinding(
+			key.WithKeys("ctrl+enter"),
+			key.WithHelp("ctrl+↵", "save & new task in parent"),
 		),
 
 		// Undo/Redo
