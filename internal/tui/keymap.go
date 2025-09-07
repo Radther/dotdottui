@@ -46,7 +46,7 @@ type KeyMap struct {
 
 // ShortHelp returns keybindings to be shown in the mini help view.
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.NewTaskBelow, k.NewSubtask, k.EditTask, k.DeleteTask, k.Help, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.NewTaskBelow, k.EditTask, k.Help, k.Quit}
 }
 
 // FullHelp returns keybindings for the expanded help view.
@@ -60,8 +60,8 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 		{k.MoveUp, k.MoveDown, k.IndentTask, k.UnindentTask, k.DeleteTask},
 		// Edit & Actions
 		{k.Undo, k.Redo, k.Copy, k.Paste, k.PasteAsSubtask},
-		// Edit Mode Actions
-		{k.NewTaskBelowFromEdit, k.NewSubtaskFromEdit, k.NewTaskInParentFromEdit},
+		// Edit Mode Actions (hidden as same as Normal mode)
+		// {k.NewTaskBelowFromEdit, k.NewSubtaskFromEdit, k.NewTaskInParentFromEdit},
 		// General
 		{k.Help, k.Quit},
 	}

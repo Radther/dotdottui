@@ -2,6 +2,8 @@ package tui
 
 import (
 	"github.com/charmbracelet/bubbles/v2/help"
+	"github.com/charmbracelet/bubbles/v2/textinput"
+	tea "github.com/charmbracelet/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss/v2"
 )
 
@@ -107,5 +109,14 @@ func GetHelpStyles() help.Styles {
 		FullKey:        HelpKeyStyle,
 		FullDesc:       HelpDescStyle,
 		FullSeparator:  HelpSeparatorStyle,
+	}
+}
+
+func GetTextInputStyles() textinput.Styles {
+	return textinput.Styles{
+		Cursor: textinput.CursorStyle{
+			Shape: tea.CursorBar,
+			Blink: true,
+		},
 	}
 }

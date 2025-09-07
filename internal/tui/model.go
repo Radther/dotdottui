@@ -105,12 +105,7 @@ func NewModelWithFile(filePath string) Model {
 	ti := textinput.New()
 	ti.Placeholder = "Task text..."
 	ti.Prompt = ""
-
-	var s textinput.Styles
-	s.Cursor = textinput.CursorStyle{
-		Shape: tea.CursorBar,
-	}
-	ti.SetStyles(s)
+	ti.SetStyles(GetTextInputStyles())
 	ti.Focus()
 	// ti.Cursor.Style = tea.CursorBar
 	var tasks []Task
@@ -173,7 +168,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-
 	case tea.KeyMsg:
 		if m.editing {
 			return m.handleEditingMode(msg)
