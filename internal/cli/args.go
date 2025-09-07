@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"dotdot/internal/storage"
 )
@@ -76,12 +77,12 @@ func ParseArgs() (*Command, error) {
 		} else {
 			// Assume it's a task list name
 			cmd.Action = "open"
-			cmd.Name = args[0]
+			cmd.Name = strings.TrimSuffix(args[0], ".dot")
 		}
 	case 2:
 		// Two arguments: command and name
 		cmd.Action = args[0]
-		cmd.Name = args[1]
+		cmd.Name = strings.TrimSuffix(args[1], ".dot")
 
 		if cmd.Action != "open" && cmd.Action != "delete" {
 			return nil, fmt.Errorf("invalid command: %s", cmd.Action)
