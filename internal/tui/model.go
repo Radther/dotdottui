@@ -103,10 +103,16 @@ func NewModel() Model {
 
 func NewModelWithFile(filePath string) Model {
 	ti := textinput.New()
-	ti.Placeholder = "bbbq"
+	ti.Placeholder = "Task text..."
 	ti.Prompt = ""
-	ti.Focus()
 
+	var s textinput.Styles
+	s.Cursor = textinput.CursorStyle{
+		Shape: tea.CursorBar,
+	}
+	ti.SetStyles(s)
+	ti.Focus()
+	// ti.Cursor.Style = tea.CursorBar
 	var tasks []Task
 	var cursorID string
 
@@ -176,12 +182,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	return m, nil
+	var cmd tea.Cmd
+	m.textInput, cmd = m.textInput.Update(msg)
+
+	return m, cmd
 }
 
 func (m Model) handleEditingMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
-	m.textInput, cmd = m.textInput.Update(msg)
 
 	switch {
 	case key.Matches(msg, m.keyMap.NewTaskBelowFromEdit):
@@ -235,6 +243,8 @@ func (m Model) handleEditingMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	m.statusMessage = msg.String() // No blinking messages?
+	m.textInput, cmd = m.textInput.Update(msg)
 	return m, cmd
 }
 
@@ -379,7 +389,7 @@ func (m Model) View() string {
 	var rows []string
 	cursorTaskPosition := 0
 	cursorTaskFound := false
-	
+
 	// Get parent chain for underlining parent tasks
 	parentChainIDs := m.getParentChainIDs(m.cursorID)
 
@@ -417,7 +427,7 @@ func (m Model) View() string {
 	if cursorTaskPosition > m.viewport.Height()-2 {
 		viewportOffset = cursorTaskPosition - (m.viewport.Height() - 2)
 	}
-	m.viewport.YOffset = viewportOffset
+	m.viewport.SetYOffset(viewportOffset)
 
 	// Combine header, viewport, and footer
 	var viewParts []string
